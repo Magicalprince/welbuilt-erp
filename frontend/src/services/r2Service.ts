@@ -16,6 +16,8 @@ const s3Client = new S3Client({
     accessKeyId: R2_ACCESS_KEY_ID,
     secretAccessKey: R2_SECRET_ACCESS_KEY,
   },
+  // Force path-style URLs (required for R2)
+  forcePathStyle: true,
   // Disable checksum headers that cause CORS issues with R2
   requestChecksumCalculation: "WHEN_REQUIRED",
   responseChecksumValidation: "WHEN_REQUIRED",
@@ -44,10 +46,11 @@ export async function uploadFileToR2(
 
   const presignedUrl = await getSignedUrl(s3Client, command, { expiresIn: 3600 });
 
-  // Upload using the presigned URL with fetch (avoids CORS issues)
+  // Upload using the presigned URL with fetch
   const response = await fetch(presignedUrl, {
     method: "PUT",
     body: file,
+    mode: "cors",
     headers: {
       "Content-Type": file.type,
     },
@@ -88,6 +91,7 @@ export async function uploadFileWithKey(
   const response = await fetch(presignedUrl, {
     method: "PUT",
     body: file,
+    mode: "cors",
     headers: {
       "Content-Type": file.type,
     },
