@@ -25,25 +25,34 @@ function generateFileKey(folder: string, fileName: string): string {
   return `${folder}/${timestamp}-${sanitizedFileName}`;
 }
 
-// Upload file to R2
+// Upload file to R2 using presigned URL (browser-compatible)
 export async function uploadFileToR2(
   file: File,
   folder: string = "documents"
 ): Promise<{ fileUrl: string; fileKey: string; fileSize: number; mimeType: string }> {
   const fileKey = generateFileKey(folder, file.name);
 
-  const arrayBuffer = await file.arrayBuffer();
-  const uint8Array = new Uint8Array(arrayBuffer);
-
+  // Generate a presigned URL for upload
   const command = new PutObjectCommand({
     Bucket: R2_BUCKET_NAME,
     Key: fileKey,
-    Body: uint8Array,
     ContentType: file.type,
-    ContentLength: file.size,
   });
 
-  await s3Client.send(command);
+  const presignedUrl = await getSignedUrl(s3Client, command, { expiresIn: 3600 });
+
+  // Upload using the presigned URL with fetch (avoids CORS issues)
+  const response = await fetch(presignedUrl, {
+    method: "PUT",
+    body: file,
+    headers: {
+      "Content-Type": file.type,
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Upload failed: ${response.status} ${response.statusText}`);
+  }
 
   // Generate the file URL
   const fileUrl = R2_PUBLIC_URL
@@ -63,18 +72,27 @@ export async function uploadFileWithKey(
   file: File,
   fileKey: string
 ): Promise<{ fileUrl: string; fileSize: number; mimeType: string }> {
-  const arrayBuffer = await file.arrayBuffer();
-  const uint8Array = new Uint8Array(arrayBuffer);
-
+  // Generate a presigned URL for upload
   const command = new PutObjectCommand({
     Bucket: R2_BUCKET_NAME,
     Key: fileKey,
-    Body: uint8Array,
     ContentType: file.type,
-    ContentLength: file.size,
   });
 
-  await s3Client.send(command);
+  const presignedUrl = await getSignedUrl(s3Client, command, { expiresIn: 3600 });
+
+  // Upload using the presigned URL with fetch
+  const response = await fetch(presignedUrl, {
+    method: "PUT",
+    body: file,
+    headers: {
+      "Content-Type": file.type,
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Upload failed: ${response.status} ${response.statusText}`);
+  }
 
   const fileUrl = R2_PUBLIC_URL
     ? `${R2_PUBLIC_URL}/${fileKey}`
