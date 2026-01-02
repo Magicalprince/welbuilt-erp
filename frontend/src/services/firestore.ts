@@ -36,6 +36,7 @@ export const COLLECTIONS = {
   ACTIVITY_LOGS: "activityLogs",
   COMMUNICATIONS: "communications",
   SETTINGS: "settings",
+  INTERNS: "interns",
 } as const;
 
 // Helper to convert Firestore Timestamp to Date
@@ -104,4 +105,4 @@ export function createBatch() {
   return writeBatch(db);
 }
 
-export { query, where, orderBy, limit, Timestamp, collection, doc };
+export { query, where, orderBy, limit, Timestamp, collection, doc, getDocs };

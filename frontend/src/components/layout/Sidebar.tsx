@@ -11,6 +11,7 @@ import {
   Settings,
   ChevronLeft,
   ChevronRight,
+  GraduationCap,
 } from "lucide-react";
 import { Button, LogoWithText, Logo } from "@/components/ui";
 
@@ -25,6 +26,7 @@ const navItems = [
   { path: "/clients", label: "Clients", icon: Users },
   { path: "/finance", label: "Finance", icon: Wallet },
   { path: "/documents", label: "Documents", icon: FileText },
+  { path: "/interns", label: "Interns", icon: GraduationCap },
   { path: "/notes", label: "Notes", icon: StickyNote },
   { path: "/settings", label: "Settings", icon: Settings },
 ];

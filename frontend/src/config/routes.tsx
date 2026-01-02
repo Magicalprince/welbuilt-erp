@@ -33,6 +33,7 @@ import DocumentsPage from "@/pages/documents/DocumentsPage";
 import NotesPage from "@/pages/notes/NotesPage";
 import SettingsPage from "@/pages/settings/SettingsPage";
 import ActivityPage from "@/pages/activity/ActivityPage";
+import InternsPage from "@/pages/interns/InternsPage";
 
 export const router = createBrowserRouter([
   // Auth Routes
@@ -139,6 +140,11 @@ export const router = createBrowserRouter([
       {
         path: "activity",
         element: <ActivityPage />,
+      },
+      // Interns
+      {
+        path: "interns",
+        element: <InternsPage />,
       },
       // Settings
       {
