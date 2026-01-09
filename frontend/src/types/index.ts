@@ -134,6 +134,7 @@ export type ExpenseCategory =
   | "OFFICE"
   | "UTILITIES"
   | "SALARIES"
+  | "FOUNDER_WITHDRAWAL"
   | "OTHER";
 
 export interface Expense {

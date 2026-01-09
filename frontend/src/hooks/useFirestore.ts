@@ -823,6 +823,9 @@ export function useCreateWithdrawal() {
       queryClient.invalidateQueries({ queryKey: queryKeys.founderFinances });
       queryClient.invalidateQueries({ queryKey: queryKeys.financialSummary });
       queryClient.invalidateQueries({ queryKey: queryKeys.pendingWithdrawals });
+      // Also invalidate expenses since withdrawal creates an expense
+      queryClient.invalidateQueries({ queryKey: queryKeys.expenses });
+      queryClient.invalidateQueries({ queryKey: queryKeys.thisMonthExpenses });
     },
   });
 }

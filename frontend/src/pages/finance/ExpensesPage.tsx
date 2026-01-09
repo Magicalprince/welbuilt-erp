@@ -30,6 +30,7 @@ const categoryOptions: { value: ExpenseCategory; label: string }[] = [
   { value: "OFFICE", label: "Office Supplies" },
   { value: "UTILITIES", label: "Utilities" },
   { value: "SALARIES", label: "Salaries" },
+  { value: "FOUNDER_WITHDRAWAL", label: "Founder Withdrawal" },
   { value: "OTHER", label: "Other" },
 ];
 
@@ -42,6 +43,7 @@ const categoryColors: Record<ExpenseCategory, string> = {
   OFFICE: "bg-yellow-500/10 text-yellow-600",
   UTILITIES: "bg-emerald-500/10 text-emerald-600",
   SALARIES: "bg-indigo-500/10 text-indigo-600",
+  FOUNDER_WITHDRAWAL: "bg-red-500/10 text-red-600",
   OTHER: "bg-gray-500/10 text-gray-600",
 };
 

@@ -10,6 +10,8 @@ import {
   where,
 } from "./firestore";
 import type { Withdrawal, WithdrawalStatus } from "@/types";
+import { createExpense } from "./financeService";
+import { getUserById } from "./userService";
 
 export interface FirestoreWithdrawal {
   id: string;
@@ -87,15 +89,32 @@ export async function getPendingWithdrawals(): Promise<Withdrawal[]> {
   return getWithdrawalsByStatus("PENDING");
 }
 
-// Create withdrawal request
+// Create withdrawal (directly as approved/successful) and record as expense
 export async function createWithdrawal(
   data: Omit<Withdrawal, "id" | "createdAt" | "status">
 ): Promise<string> {
-  return createDocument(COLLECTIONS.WITHDRAWALS, {
+  // Get founder name for expense description
+  const founder = await getUserById(data.founderId);
+  const founderName = founder?.name || "Founder";
+
+  // Create the withdrawal record
+  const withdrawalId = await createDocument(COLLECTIONS.WITHDRAWALS, {
     ...data,
     date: Timestamp.fromDate(data.date),
-    status: "PENDING",
+    status: "APPROVED",
   });
+
+  // Also create an expense record for this withdrawal
+  await createExpense({
+    description: `Founder Withdrawal - ${founderName}`,
+    amount: data.amount,
+    category: "FOUNDER_WITHDRAWAL",
+    date: data.date,
+    paidBy: "COMPANY",
+    notes: data.notes || `Withdrawal by ${founderName}`,
+  });
+
+  return withdrawalId;
 }
 
 // Approve withdrawal

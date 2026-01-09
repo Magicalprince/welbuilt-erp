@@ -302,7 +302,7 @@ export default function FinancePage() {
                 </div>
               </div>
               <p className="text-xs text-muted-foreground mt-3">
-                Available funds
+                After {formatCurrency(financials?.totalWithdrawals ?? 0)} withdrawn
               </p>
             </CardContent>
           </Card>
