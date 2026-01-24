@@ -103,11 +103,22 @@ export async function getThisMonthIncomes(): Promise<Income[]> {
 export async function createIncome(
   data: Omit<Income, "id" | "createdAt">
 ): Promise<string> {
-  return createDocument(COLLECTIONS.INCOMES, {
-    ...data,
+  // Build document data, excluding undefined values (Firestore doesn't accept undefined)
+  const docData: Record<string, unknown> = {
+    description: data.description,
+    amount: data.amount,
+    category: data.category,
     date: Timestamp.fromDate(data.date),
-    receipt: data.receipt || null,
-  });
+    receivedBy: data.receivedBy,
+  };
+
+  // Only include optional fields if they have values
+  if (data.clientId) docData.clientId = data.clientId;
+  if (data.projectId) docData.projectId = data.projectId;
+  if (data.receipt) docData.receipt = data.receipt;
+  if (data.notes) docData.notes = data.notes;
+
+  return createDocument(COLLECTIONS.INCOMES, docData);
 }
 
 // Update income
