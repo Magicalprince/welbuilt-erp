@@ -1,14 +1,16 @@
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui";
-import { Award, FileText, CalendarCheck } from "lucide-react";
+import { Award, FileText, CalendarCheck, Receipt } from "lucide-react";
 import CertificatesTab from "./CertificatesTab";
 import OfferLettersTab from "./OfferLettersTab";
+import AttendanceTab from "./AttendanceTab";
+import PayslipTab from "./PayslipTab";
 
 export default function InternsPage() {
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-bold">Interns</h1>
-        <p className="text-muted-foreground">Manage intern certificates, offer letters, and attendance</p>
+        <p className="text-muted-foreground">Manage intern certificates, offer letters, attendance, and payslips</p>
       </div>
 
       <Tabs defaultValue="certificates">
@@ -23,7 +25,11 @@ export default function InternsPage() {
           </TabsTrigger>
           <TabsTrigger value="attendance" className="flex items-center gap-2">
             <CalendarCheck className="h-4 w-4" />
-            Attendance Slip
+            Attendance
+          </TabsTrigger>
+          <TabsTrigger value="payslips" className="flex items-center gap-2">
+            <Receipt className="h-4 w-4" />
+            Payslips
           </TabsTrigger>
         </TabsList>
 
@@ -36,11 +42,11 @@ export default function InternsPage() {
         </TabsContent>
 
         <TabsContent value="attendance" className="mt-6">
-          <div className="text-center py-12">
-            <CalendarCheck className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-            <h3 className="text-lg font-semibold">Attendance Slips</h3>
-            <p className="text-muted-foreground">Coming soon - Generate and manage attendance slips</p>
-          </div>
+          <AttendanceTab />
+        </TabsContent>
+
+        <TabsContent value="payslips" className="mt-6">
+          <PayslipTab />
         </TabsContent>
       </Tabs>
     </div>

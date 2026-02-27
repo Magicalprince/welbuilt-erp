@@ -140,6 +140,15 @@ export async function updateIntern(
     paymentStatus: InternPaymentStatus;
     certificateUrl: string;
     certificateKey: string;
+    attendanceUrl: string;
+    attendanceKey: string;
+    totalInternshipDays: number;
+    daysPresent: number;
+    payslipUrl: string;
+    payslipKey: string;
+    referenceNumber: string;
+    numberOfMonths: number;
+    paymentType: 'MONTHLY' | 'ONE_TIME';
   }>
 ): Promise<void> {
   const updateData: Record<string, unknown> = { ...data };
@@ -217,6 +226,30 @@ export async function updateInternOfferLetter(
   return updateDocument(COLLECTIONS.INTERNS, id, {
     offerLetterUrl,
     offerLetterKey,
+  });
+}
+
+// Update attendance URL for intern
+export async function updateInternAttendance(
+  id: string,
+  attendanceUrl: string,
+  attendanceKey: string
+): Promise<void> {
+  return updateDocument(COLLECTIONS.INTERNS, id, {
+    attendanceUrl,
+    attendanceKey,
+  });
+}
+
+// Update payslip URL for intern
+export async function updateInternPayslip(
+  id: string,
+  payslipUrl: string,
+  payslipKey: string
+): Promise<void> {
+  return updateDocument(COLLECTIONS.INTERNS, id, {
+    payslipUrl,
+    payslipKey,
   });
 }
 

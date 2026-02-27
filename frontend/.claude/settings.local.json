@@ -1,7 +1,25 @@
 {
   "permissions": {
     "allow": [
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "Bash(npm run:*)",
+      "WebSearch",
+      "WebFetch(domain:hrcalcy.com)",
+      "WebFetch(domain:www.mewurk.com)",
+      "WebFetch(domain:cleartax.in)",
+      "WebFetch(domain:dailyaspirants.medium.com)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:www.keka.com)",
+      "WebFetch(domain:paysliper.com)",
+      "WebFetch(domain:bbbootstrap.com)",
+      "WebFetch(domain:www.dailyaspirants.com)",
+      "WebFetch(domain:www.timedoctor.com)",
+      "WebFetch(domain:codepen.io)",
+      "WebFetch(domain:www.examples.com)",
+      "WebFetch(domain:www.zimyo.com)",
+      "WebFetch(domain:www.superworks.com)",
+      "WebFetch(domain:truein.com)",
+      "WebFetch(domain:msofficegeek.com)"
     ]
   }
 }

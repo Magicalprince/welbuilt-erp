@@ -357,6 +357,17 @@ export interface Intern {
   mode?: InternMode;
   stipend?: number;
   projectTitle?: string;
+  // Attendance fields
+  attendanceUrl?: string;
+  attendanceKey?: string;
+  totalInternshipDays?: number;
+  daysPresent?: number;
+  // Payslip fields
+  payslipUrl?: string;
+  payslipKey?: string;
+  referenceNumber?: string;
+  numberOfMonths?: number;
+  paymentType?: 'MONTHLY' | 'ONE_TIME';
   createdAt: Date;
   updatedAt: Date;
 }
