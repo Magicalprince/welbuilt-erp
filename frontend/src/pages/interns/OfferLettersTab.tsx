@@ -12,6 +12,8 @@ import {
   Loader2,
   FileSpreadsheet,
   Eye,
+  Pencil,
+  RefreshCw,
 } from "lucide-react";
 import {
   Button,
@@ -26,7 +28,7 @@ import {
   Checkbox,
 } from "@/components/ui";
 import { cn } from "@/lib/utils";
-import { useInterns, useCreateIntern, useDeleteIntern, internQueryKeys } from "@/hooks/useInterns";
+import { useInterns, useCreateIntern, useUpdateIntern, useDeleteIntern, internQueryKeys } from "@/hooks/useInterns";
 import { useQueryClient } from "@tanstack/react-query";
 import type { Intern, InternDomain, InternPaymentStatus, InternDuration, InternMode } from "@/types";
 import { INTERN_DOMAIN_LABELS, INTERN_MODE_LABELS } from "@/types";
@@ -90,6 +92,7 @@ export default function OfferLettersTab() {
   // Modal states
   const [isNewModalOpen, setIsNewModalOpen] = useState(false);
   const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
+  const [editIntern, setEditIntern] = useState<Intern | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<Intern | null>(null);
 
   // Selection for bulk operations
@@ -142,6 +145,21 @@ export default function OfferLettersTab() {
     } catch (error) {
       console.error("Failed to generate offer letter:", error);
       toast.error("Failed to generate offer letter");
+    } finally {
+      setGeneratingLetter(null);
+    }
+  };
+
+  // Handle offer letter regeneration
+  const handleRegenerateOfferLetter = async (intern: Intern & { id: string }) => {
+    setGeneratingLetter(intern.id);
+    try {
+      await generateAndUploadOfferLetter(intern);
+      toast.success(`Offer letter regenerated for ${intern.name}`);
+      refreshInterns();
+    } catch (error) {
+      console.error("Failed to regenerate offer letter:", error);
+      toast.error("Failed to regenerate offer letter");
     } finally {
       setGeneratingLetter(null);
     }
@@ -459,6 +477,20 @@ export default function OfferLettersTab() {
                             >
                               <Download className="h-3 w-3" />
                             </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 px-2"
+                              title="Regenerate offer letter"
+                              onClick={() => handleRegenerateOfferLetter(intern as Intern & { id: string })}
+                              disabled={generatingLetter === intern.id}
+                            >
+                              {generatingLetter === intern.id ? (
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                              ) : (
+                                <RefreshCw className="h-3 w-3" />
+                              )}
+                            </Button>
                           </div>
                         ) : (
                           <Button
@@ -480,14 +512,25 @@ export default function OfferLettersTab() {
                         )}
                       </td>
                       <td className="p-3">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 px-2 text-destructive hover:text-destructive"
-                          onClick={() => setDeleteConfirm(intern)}
-                        >
-                          <Trash2 className="h-3 w-3" />
-                        </Button>
+                        <div className="flex items-center gap-1">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 px-2"
+                            title="Edit intern"
+                            onClick={() => setEditIntern(intern)}
+                          >
+                            <Pencil className="h-3 w-3" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 px-2 text-destructive hover:text-destructive"
+                            onClick={() => setDeleteConfirm(intern)}
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -503,6 +546,14 @@ export default function OfferLettersTab() {
         isOpen={isNewModalOpen}
         onClose={() => setIsNewModalOpen(false)}
         onOfferLetterGenerated={refreshInterns}
+      />
+
+      {/* Edit Offer Letter Modal */}
+      <EditOfferLetterModal
+        isOpen={!!editIntern}
+        intern={editIntern}
+        onClose={() => setEditIntern(null)}
+        onSaved={refreshInterns}
       />
 
       {/* Bulk Import Modal */}
@@ -828,6 +879,299 @@ function NewOfferLetterModal({
               </>
             ) : (
               "Create"
+            )}
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+// Edit Offer Letter Modal Component
+function EditOfferLetterModal({
+  isOpen,
+  intern,
+  onClose,
+  onSaved,
+}: {
+  isOpen: boolean;
+  intern: Intern | null;
+  onClose: () => void;
+  onSaved?: () => void;
+}) {
+  const updateMutation = useUpdateIntern();
+  const [formData, setFormData] = useState({
+    name: "",
+    email: "",
+    phone: "",
+    college: "",
+    year: "1st Year",
+    domain: "" as string,
+    duration: "1-Month" as InternDuration,
+    startDate: "",
+    endDate: "",
+    paymentStatus: "UNPAID" as InternPaymentStatus,
+    mode: "REMOTE" as InternMode,
+    stipend: 0,
+    projectTitle: "",
+  });
+  const [regenerateLetter, setRegenerateLetter] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  const populateForm = () => {
+    if (intern) {
+      setFormData({
+        name: intern.name,
+        email: intern.email,
+        phone: intern.phone,
+        college: intern.college,
+        year: intern.year,
+        domain: INTERN_DOMAIN_LABELS[intern.domain] || "",
+        duration: intern.duration,
+        startDate: intern.startDate instanceof Date
+          ? intern.startDate.toISOString().split("T")[0]
+          : String(intern.startDate).split("T")[0],
+        endDate: intern.endDate instanceof Date
+          ? intern.endDate.toISOString().split("T")[0]
+          : String(intern.endDate).split("T")[0],
+        paymentStatus: intern.paymentStatus,
+        mode: intern.mode || "REMOTE",
+        stipend: intern.stipend || 0,
+        projectTitle: intern.projectTitle || "",
+      });
+    }
+  };
+
+  if (isOpen && intern && formData.name !== intern.name) {
+    populateForm();
+  }
+
+  const handleSubmit = async () => {
+    if (!intern) return;
+
+    if (!formData.name || !formData.email || !formData.phone || !formData.college) {
+      toast.error("Please fill all required fields");
+      return;
+    }
+
+    if (!formData.domain?.trim()) {
+      toast.error("Please enter a domain");
+      return;
+    }
+
+    if (!formData.projectTitle) {
+      toast.error("Please enter a project title");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const mappedDomain = mapDomainString(formData.domain) as InternDomain;
+
+      const { updateIntern } = await import("@/services/internService");
+      await updateIntern(intern.id, {
+        name: formData.name,
+        email: formData.email,
+        phone: formData.phone,
+        college: formData.college,
+        year: formData.year,
+        domain: mappedDomain,
+        duration: formData.duration as InternDuration,
+        startDate: new Date(formData.startDate),
+        endDate: new Date(formData.endDate),
+        paymentStatus: formData.paymentStatus,
+      });
+
+      await updateIntern(intern.id, {
+        mode: formData.mode,
+        stipend: formData.stipend,
+        projectTitle: formData.projectTitle,
+      } as Partial<Intern>);
+
+      toast.success("Intern updated successfully");
+
+      if (regenerateLetter) {
+        const updatedIntern: Intern & { id: string } = {
+          ...intern,
+          ...formData,
+          domain: mappedDomain,
+          startDate: new Date(formData.startDate),
+          endDate: new Date(formData.endDate),
+          issueDate: intern.issueDate,
+        };
+
+        try {
+          await generateAndUploadOfferLetter(updatedIntern, formData.domain.trim());
+          toast.success("Offer letter regenerated");
+        } catch {
+          toast.error("Failed to regenerate offer letter");
+        }
+      }
+
+      onSaved?.();
+      onClose();
+    } catch {
+      toast.error("Failed to update intern");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} title="Edit Offer Letter">
+      <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-2">
+        <div className="grid grid-cols-2 gap-4">
+          <div className="col-span-2">
+            <Label>Full Name *</Label>
+            <Input
+              value={formData.name}
+              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+            />
+          </div>
+
+          <div>
+            <Label>Email *</Label>
+            <Input
+              type="email"
+              value={formData.email}
+              onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+            />
+          </div>
+
+          <div>
+            <Label>Phone *</Label>
+            <Input
+              value={formData.phone}
+              onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+            />
+          </div>
+
+          <div className="col-span-2">
+            <Label>College *</Label>
+            <Input
+              value={formData.college}
+              onChange={(e) => setFormData({ ...formData, college: e.target.value })}
+            />
+          </div>
+
+          <div>
+            <Label>Year</Label>
+            <Select
+              value={formData.year}
+              onChange={(e) => setFormData({ ...formData, year: e.target.value })}
+              options={yearOptions.filter((y) => y.value !== "ALL")}
+            />
+          </div>
+
+          <div>
+            <Label>Domain *</Label>
+            <Input
+              value={formData.domain}
+              onChange={(e) => setFormData({ ...formData, domain: e.target.value })}
+              placeholder="e.g., Web Development, AI/ML, Data Science"
+            />
+          </div>
+
+          <div>
+            <Label>Duration</Label>
+            <Select
+              value={formData.duration}
+              onChange={(e) => setFormData({ ...formData, duration: e.target.value as InternDuration })}
+              options={durationOptions}
+            />
+          </div>
+
+          <div>
+            <Label>Payment Status</Label>
+            <Select
+              value={formData.paymentStatus}
+              onChange={(e) => setFormData({ ...formData, paymentStatus: e.target.value as InternPaymentStatus })}
+              options={[
+                { value: "PAID", label: "Paid" },
+                { value: "UNPAID", label: "Unpaid" },
+              ]}
+            />
+          </div>
+
+          <div>
+            <Label>Start Date *</Label>
+            <Input
+              type="date"
+              value={formData.startDate}
+              onChange={(e) => setFormData({ ...formData, startDate: e.target.value })}
+            />
+          </div>
+
+          <div>
+            <Label>End Date *</Label>
+            <Input
+              type="date"
+              value={formData.endDate}
+              onChange={(e) => setFormData({ ...formData, endDate: e.target.value })}
+            />
+          </div>
+
+          {/* Offer Letter Specific Fields */}
+          <div className="col-span-2 border-t pt-4 mt-2">
+            <h4 className="font-medium mb-3">Offer Letter Details</h4>
+          </div>
+
+          <div>
+            <Label>Mode *</Label>
+            <Select
+              value={formData.mode}
+              onChange={(e) => setFormData({ ...formData, mode: e.target.value as InternMode })}
+              options={modeOptions}
+            />
+          </div>
+
+          <div>
+            <Label>Stipend</Label>
+            <Input
+              type="number"
+              value={formData.stipend}
+              onChange={(e) => setFormData({ ...formData, stipend: parseInt(e.target.value) || 0 })}
+              placeholder="0 for unpaid"
+            />
+          </div>
+
+          <div className="col-span-2">
+            <Label>Project Title *</Label>
+            <Input
+              value={formData.projectTitle}
+              onChange={(e) => setFormData({ ...formData, projectTitle: e.target.value })}
+              placeholder="e.g., AI Chatbot Development"
+            />
+          </div>
+
+          <div className="col-span-2 flex items-center gap-2">
+            <Checkbox
+              id="regenerateLetter"
+              checked={regenerateLetter}
+              onChange={(e) => setRegenerateLetter(e.target.checked)}
+            />
+            <Label htmlFor="regenerateLetter" className="cursor-pointer">
+              Regenerate offer letter after saving
+            </Label>
+          </div>
+        </div>
+
+        <div className="flex gap-3 pt-4 border-t">
+          <Button variant="outline" className="flex-1" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            className="flex-1"
+            onClick={handleSubmit}
+            disabled={saving}
+          >
+            {saving ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Saving...
+              </>
+            ) : (
+              "Save & Regenerate"
             )}
           </Button>
         </div>

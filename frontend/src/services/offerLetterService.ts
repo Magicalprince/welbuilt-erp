@@ -260,6 +260,32 @@ export async function generateOfferLetterPdf(data: OfferLetterData): Promise<Uin
 
   // Signature section
   currentY -= 32;
+  const signatureStartY = currentY;
+
+  // === COMPANY SEAL (drawn first so it appears behind the text) ===
+  try {
+    const sealResponse = await fetch("/images/seal.png");
+    const sealBytes = await sealResponse.arrayBuffer();
+    const sealImage = await pdfDoc.embedPng(new Uint8Array(sealBytes));
+
+    // Seal image is 411x607 (portrait) — scale width to match so the circle isn't squashed
+    const sealWidth = 150;
+    const sealHeight = sealWidth * (607 / 411); // ~221 to preserve aspect ratio
+    const sealX = leftMargin + 10;
+    const sealY = signatureStartY - sealHeight + 60; // Centered behind the signature block
+
+    page.drawImage(sealImage, {
+      x: sealX,
+      y: sealY,
+      width: sealWidth,
+      height: sealHeight,
+      opacity: 0.15,
+    });
+  } catch {
+    console.warn("Failed to load company seal image");
+  }
+
+  // Signature text (drawn on top of the seal)
   page.drawText("Warm Regards,", {
     x: leftMargin,
     y: currentY,
@@ -303,27 +329,6 @@ export async function generateOfferLetterPdf(data: OfferLetterData): Promise<Uin
     font: regularFont,
     color: black,
   });
-
-  // === COMPANY SEAL ===
-  try {
-    const sealResponse = await fetch("/images/seal.png");
-    const sealBytes = await sealResponse.arrayBuffer();
-    const sealImage = await pdfDoc.embedPng(new Uint8Array(sealBytes));
-
-    const sealSize = 130;
-    const sealX = width - sealSize - 60; // Position at the right side with margin
-    const sealY = currentY - 20; // Vertically center with signature block
-
-    page.drawImage(sealImage, {
-      x: sealX,
-      y: sealY,
-      width: sealSize,
-      height: sealSize,
-    });
-  } catch {
-    // If seal image fails to load, continue without it
-    console.warn("Failed to load company seal image");
-  }
 
   // Save the PDF
   const pdfBytes = await pdfDoc.save();

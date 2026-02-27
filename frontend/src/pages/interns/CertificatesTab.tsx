@@ -12,6 +12,8 @@ import {
   Loader2,
   FileSpreadsheet,
   Eye,
+  Pencil,
+  RefreshCw,
 } from "lucide-react";
 import {
   Button,
@@ -26,7 +28,7 @@ import {
   Checkbox,
 } from "@/components/ui";
 import { cn } from "@/lib/utils";
-import { useInterns, useCreateIntern, useDeleteIntern, internQueryKeys } from "@/hooks/useInterns";
+import { useInterns, useCreateIntern, useUpdateIntern, useDeleteIntern, internQueryKeys } from "@/hooks/useInterns";
 import { useQueryClient } from "@tanstack/react-query";
 import type { Intern, InternDomain, InternPaymentStatus, InternDuration } from "@/types";
 import { INTERN_DOMAIN_LABELS } from "@/types";
@@ -88,6 +90,7 @@ export default function CertificatesTab() {
   // Modal states
   const [isNewModalOpen, setIsNewModalOpen] = useState(false);
   const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
+  const [editIntern, setEditIntern] = useState<Intern | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<Intern | null>(null);
 
   // Selection for bulk operations
@@ -138,6 +141,21 @@ export default function CertificatesTab() {
     } catch (error) {
       console.error("Failed to generate certificate:", error);
       toast.error("Failed to generate certificate");
+    } finally {
+      setGeneratingCert(null);
+    }
+  };
+
+  // Handle certificate regeneration (re-generate with current data)
+  const handleRegenerateCertificate = async (intern: Intern & { id: string }) => {
+    setGeneratingCert(intern.id);
+    try {
+      await generateAndUploadCertificate(intern);
+      toast.success(`Certificate regenerated for ${intern.name}`);
+      refreshInterns();
+    } catch (error) {
+      console.error("Failed to regenerate certificate:", error);
+      toast.error("Failed to regenerate certificate");
     } finally {
       setGeneratingCert(null);
     }
@@ -454,6 +472,20 @@ export default function CertificatesTab() {
                             >
                               <Download className="h-3 w-3" />
                             </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 px-2"
+                              title="Regenerate certificate"
+                              onClick={() => handleRegenerateCertificate(intern as Intern & { id: string })}
+                              disabled={generatingCert === intern.id}
+                            >
+                              {generatingCert === intern.id ? (
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                              ) : (
+                                <RefreshCw className="h-3 w-3" />
+                              )}
+                            </Button>
                           </div>
                         ) : (
                           <Button
@@ -475,14 +507,25 @@ export default function CertificatesTab() {
                         )}
                       </td>
                       <td className="p-3">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 px-2 text-destructive hover:text-destructive"
-                          onClick={() => setDeleteConfirm(intern)}
-                        >
-                          <Trash2 className="h-3 w-3" />
-                        </Button>
+                        <div className="flex items-center gap-1">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 px-2"
+                            title="Edit intern"
+                            onClick={() => setEditIntern(intern)}
+                          >
+                            <Pencil className="h-3 w-3" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 px-2 text-destructive hover:text-destructive"
+                            onClick={() => setDeleteConfirm(intern)}
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -498,6 +541,14 @@ export default function CertificatesTab() {
         isOpen={isNewModalOpen}
         onClose={() => setIsNewModalOpen(false)}
         onCertificateGenerated={refreshInterns}
+      />
+
+      {/* Edit Certificate Modal */}
+      <EditCertificateModal
+        isOpen={!!editIntern}
+        intern={editIntern}
+        onClose={() => setEditIntern(null)}
+        onSaved={refreshInterns}
       />
 
       {/* Bulk Import Modal */}
@@ -771,6 +822,269 @@ function NewCertificateModal({
               </>
             ) : (
               "Create"
+            )}
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+// Edit Certificate Modal Component
+function EditCertificateModal({
+  isOpen,
+  intern,
+  onClose,
+  onSaved,
+}: {
+  isOpen: boolean;
+  intern: Intern | null;
+  onClose: () => void;
+  onSaved?: () => void;
+}) {
+  const updateMutation = useUpdateIntern();
+  const [formData, setFormData] = useState({
+    name: "",
+    email: "",
+    phone: "",
+    college: "",
+    year: "1st Year",
+    domain: "" as string,
+    duration: "1-Month" as InternDuration,
+    startDate: "",
+    endDate: "",
+    issueDate: "",
+    paymentStatus: "UNPAID" as InternPaymentStatus,
+  });
+  const [regenerateCert, setRegenerateCert] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  // Pre-fill form when intern changes
+  useState(() => {});
+  // Use effect-like pattern with key
+  const populateForm = () => {
+    if (intern) {
+      setFormData({
+        name: intern.name,
+        email: intern.email,
+        phone: intern.phone,
+        college: intern.college,
+        year: intern.year,
+        domain: INTERN_DOMAIN_LABELS[intern.domain] || "",
+        duration: intern.duration,
+        startDate: intern.startDate instanceof Date
+          ? intern.startDate.toISOString().split("T")[0]
+          : String(intern.startDate).split("T")[0],
+        endDate: intern.endDate instanceof Date
+          ? intern.endDate.toISOString().split("T")[0]
+          : String(intern.endDate).split("T")[0],
+        issueDate: intern.issueDate instanceof Date
+          ? intern.issueDate.toISOString().split("T")[0]
+          : String(intern.issueDate).split("T")[0],
+        paymentStatus: intern.paymentStatus,
+      });
+    }
+  };
+
+  // Populate when modal opens
+  if (isOpen && intern && formData.name !== intern.name) {
+    populateForm();
+  }
+
+  const handleSubmit = async () => {
+    if (!intern) return;
+
+    if (!formData.name || !formData.email || !formData.phone || !formData.college) {
+      toast.error("Please fill all required fields");
+      return;
+    }
+
+    if (!formData.domain?.trim()) {
+      toast.error("Please enter a domain");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const mappedDomain = mapDomainString(formData.domain) as InternDomain;
+
+      await updateMutation.mutateAsync({
+        id: intern.id,
+        data: {
+          name: formData.name,
+          email: formData.email,
+          phone: formData.phone,
+          college: formData.college,
+          year: formData.year,
+          domain: mappedDomain,
+          duration: formData.duration as InternDuration,
+          startDate: new Date(formData.startDate),
+          endDate: new Date(formData.endDate),
+          issueDate: new Date(formData.issueDate),
+          paymentStatus: formData.paymentStatus,
+        },
+      });
+
+      toast.success("Intern updated successfully");
+
+      if (regenerateCert) {
+        const updatedIntern: Intern & { id: string } = {
+          ...intern,
+          ...formData,
+          domain: mappedDomain,
+          startDate: new Date(formData.startDate),
+          endDate: new Date(formData.endDate),
+          issueDate: new Date(formData.issueDate),
+        };
+
+        try {
+          await generateAndUploadCertificate(updatedIntern, formData.domain.trim());
+          toast.success("Certificate regenerated");
+        } catch {
+          toast.error("Failed to regenerate certificate");
+        }
+      }
+
+      onSaved?.();
+      onClose();
+    } catch {
+      toast.error("Failed to update intern");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} title="Edit Certificate">
+      <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-2">
+        <div className="grid grid-cols-2 gap-4">
+          <div className="col-span-2">
+            <Label>Full Name *</Label>
+            <Input
+              value={formData.name}
+              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+            />
+          </div>
+
+          <div>
+            <Label>Email *</Label>
+            <Input
+              type="email"
+              value={formData.email}
+              onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+            />
+          </div>
+
+          <div>
+            <Label>Phone *</Label>
+            <Input
+              value={formData.phone}
+              onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+            />
+          </div>
+
+          <div className="col-span-2">
+            <Label>College *</Label>
+            <Input
+              value={formData.college}
+              onChange={(e) => setFormData({ ...formData, college: e.target.value })}
+            />
+          </div>
+
+          <div>
+            <Label>Year</Label>
+            <Select
+              value={formData.year}
+              onChange={(e) => setFormData({ ...formData, year: e.target.value })}
+              options={yearOptions.filter((y) => y.value !== "ALL")}
+            />
+          </div>
+
+          <div>
+            <Label>Domain *</Label>
+            <Input
+              value={formData.domain}
+              onChange={(e) => setFormData({ ...formData, domain: e.target.value })}
+              placeholder="e.g., Web Development, AI/ML, Data Science"
+            />
+          </div>
+
+          <div>
+            <Label>Duration</Label>
+            <Select
+              value={formData.duration}
+              onChange={(e) => setFormData({ ...formData, duration: e.target.value as InternDuration })}
+              options={durationOptions}
+            />
+          </div>
+
+          <div>
+            <Label>Payment Status</Label>
+            <Select
+              value={formData.paymentStatus}
+              onChange={(e) => setFormData({ ...formData, paymentStatus: e.target.value as InternPaymentStatus })}
+              options={[
+                { value: "PAID", label: "Paid" },
+                { value: "UNPAID", label: "Unpaid" },
+              ]}
+            />
+          </div>
+
+          <div>
+            <Label>Start Date *</Label>
+            <Input
+              type="date"
+              value={formData.startDate}
+              onChange={(e) => setFormData({ ...formData, startDate: e.target.value })}
+            />
+          </div>
+
+          <div>
+            <Label>End Date *</Label>
+            <Input
+              type="date"
+              value={formData.endDate}
+              onChange={(e) => setFormData({ ...formData, endDate: e.target.value })}
+            />
+          </div>
+
+          <div className="col-span-2">
+            <Label>Issue Date</Label>
+            <Input
+              type="date"
+              value={formData.issueDate}
+              onChange={(e) => setFormData({ ...formData, issueDate: e.target.value })}
+            />
+          </div>
+
+          <div className="col-span-2 flex items-center gap-2">
+            <Checkbox
+              id="regenerateCert"
+              checked={regenerateCert}
+              onChange={(e) => setRegenerateCert(e.target.checked)}
+            />
+            <Label htmlFor="regenerateCert" className="cursor-pointer">
+              Regenerate certificate after saving
+            </Label>
+          </div>
+        </div>
+
+        <div className="flex gap-3 pt-4 border-t">
+          <Button variant="outline" className="flex-1" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            className="flex-1"
+            onClick={handleSubmit}
+            disabled={saving}
+          >
+            {saving ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Saving...
+              </>
+            ) : (
+              "Save & Regenerate"
             )}
           </Button>
         </div>
