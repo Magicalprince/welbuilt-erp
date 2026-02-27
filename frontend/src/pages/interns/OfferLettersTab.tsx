@@ -28,7 +28,7 @@ import {
   Checkbox,
 } from "@/components/ui";
 import { cn } from "@/lib/utils";
-import { useInterns, useCreateIntern, useUpdateIntern, useDeleteIntern, internQueryKeys } from "@/hooks/useInterns";
+import { useInterns, useCreateIntern, useDeleteIntern, internQueryKeys } from "@/hooks/useInterns";
 import { useQueryClient } from "@tanstack/react-query";
 import type { Intern, InternDomain, InternPaymentStatus, InternDuration, InternMode } from "@/types";
 import { INTERN_DOMAIN_LABELS, INTERN_MODE_LABELS } from "@/types";
@@ -899,7 +899,6 @@ function EditOfferLetterModal({
   onClose: () => void;
   onSaved?: () => void;
 }) {
-  const updateMutation = useUpdateIntern();
   const [formData, setFormData] = useState({
     name: "",
     email: "",
