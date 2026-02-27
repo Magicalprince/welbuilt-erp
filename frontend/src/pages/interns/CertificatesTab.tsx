@@ -551,7 +551,7 @@ function NewCertificateModal({
     phone: "",
     college: "",
     year: "1st Year",
-    domain: "WEB_DEVELOPMENT" as InternDomain,
+    domain: "" as string,
     duration: "1-Month" as InternDuration,
     startDate: "",
     endDate: "",
@@ -567,7 +567,7 @@ function NewCertificateModal({
       phone: "",
       college: "",
       year: "1st Year",
-      domain: "WEB_DEVELOPMENT",
+      domain: "",
       duration: "1-Month",
       startDate: "",
       endDate: "",
@@ -588,9 +588,16 @@ function NewCertificateModal({
       return;
     }
 
+    if (!formData.domain?.trim()) {
+      toast.error("Please enter a domain");
+      return;
+    }
+
     try {
+      const mappedDomain = mapDomainString(formData.domain) as InternDomain;
       const internId = await createMutation.mutateAsync({
         ...formData,
+        domain: mappedDomain,
         startDate: new Date(formData.startDate),
         endDate: new Date(formData.endDate),
         issueDate: new Date(formData.issueDate),
@@ -604,6 +611,7 @@ function NewCertificateModal({
           id: internId,
           internId: "", // Will be fetched
           ...formData,
+          domain: mappedDomain,
           startDate: new Date(formData.startDate),
           endDate: new Date(formData.endDate),
           issueDate: new Date(formData.issueDate),
@@ -612,7 +620,7 @@ function NewCertificateModal({
         };
 
         try {
-          await generateAndUploadCertificate(intern);
+          await generateAndUploadCertificate(intern, formData.domain.trim());
           toast.success("Certificate generated");
           // Notify parent to refresh the list
           onCertificateGenerated?.();
@@ -679,11 +687,11 @@ function NewCertificateModal({
           </div>
 
           <div>
-            <Label>Domain</Label>
-            <Select
+            <Label>Domain *</Label>
+            <Input
               value={formData.domain}
-              onChange={(e) => setFormData({ ...formData, domain: e.target.value as InternDomain })}
-              options={domainOptions.filter((d) => d.value !== "ALL")}
+              onChange={(e) => setFormData({ ...formData, domain: e.target.value })}
+              placeholder="e.g., Web Development, AI/ML, Data Science"
             />
           </div>
 

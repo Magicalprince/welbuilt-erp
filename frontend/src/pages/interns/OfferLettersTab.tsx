@@ -35,6 +35,7 @@ import {
   generateAndUploadOfferLetter,
   bulkGenerateOfferLetters,
 } from "@/services/offerLetterService";
+import { mapDomainString } from "@/services/certificateService";
 import { deleteFileFromR2, extractFileKeyFromUrl, getSignedDownloadUrl } from "@/services/r2Service";
 import toast from "react-hot-toast";
 
@@ -556,7 +557,7 @@ function NewOfferLetterModal({
     phone: "",
     college: "",
     year: "1st Year",
-    domain: "WEB_DEVELOPMENT" as InternDomain,
+    domain: "" as string,
     duration: "1-Month" as InternDuration,
     startDate: "",
     endDate: "",
@@ -576,7 +577,7 @@ function NewOfferLetterModal({
       phone: "",
       college: "",
       year: "1st Year",
-      domain: "WEB_DEVELOPMENT",
+      domain: "",
       duration: "1-Month",
       startDate: "",
       endDate: "",
@@ -605,14 +606,20 @@ function NewOfferLetterModal({
       return;
     }
 
+    if (!formData.domain?.trim()) {
+      toast.error("Please enter a domain");
+      return;
+    }
+
     try {
+      const mappedDomain = mapDomainString(formData.domain) as InternDomain;
       const internId = await createMutation.mutateAsync({
         name: formData.name,
         email: formData.email,
         phone: formData.phone,
         college: formData.college,
         year: formData.year,
-        domain: formData.domain,
+        domain: mappedDomain,
         duration: formData.duration,
         startDate: new Date(formData.startDate),
         endDate: new Date(formData.endDate),
@@ -636,6 +643,7 @@ function NewOfferLetterModal({
           id: internId,
           internId: "",
           ...formData,
+          domain: mappedDomain,
           startDate: new Date(formData.startDate),
           endDate: new Date(formData.endDate),
           issueDate: new Date(formData.issueDate),
@@ -644,7 +652,7 @@ function NewOfferLetterModal({
         };
 
         try {
-          await generateAndUploadOfferLetter(intern);
+          await generateAndUploadOfferLetter(intern, formData.domain.trim());
           toast.success("Offer letter generated");
           onOfferLetterGenerated?.();
         } catch (error) {
@@ -712,11 +720,11 @@ function NewOfferLetterModal({
           </div>
 
           <div>
-            <Label>Domain</Label>
-            <Select
+            <Label>Domain *</Label>
+            <Input
               value={formData.domain}
-              onChange={(e) => setFormData({ ...formData, domain: e.target.value as InternDomain })}
-              options={domainOptions.filter((d) => d.value !== "ALL")}
+              onChange={(e) => setFormData({ ...formData, domain: e.target.value })}
+              placeholder="e.g., Web Development, AI/ML, Data Science"
             />
           </div>
 

@@ -278,6 +278,24 @@ export async function generateOfferLetterPdf(data: OfferLetterData): Promise<Uin
   });
 
   currentY -= lineHeight;
+  page.drawText("Baranitharan S", {
+    x: leftMargin,
+    y: currentY,
+    size: fontSize,
+    font: boldFont,
+    color: black,
+  });
+
+  currentY -= lineHeight;
+  page.drawText("Chief Operational Officer (COO)", {
+    x: leftMargin,
+    y: currentY,
+    size: fontSize,
+    font: regularFont,
+    color: black,
+  });
+
+  currentY -= lineHeight;
   page.drawText("HR Department", {
     x: leftMargin,
     y: currentY,
@@ -285,6 +303,27 @@ export async function generateOfferLetterPdf(data: OfferLetterData): Promise<Uin
     font: regularFont,
     color: black,
   });
+
+  // === COMPANY SEAL ===
+  try {
+    const sealResponse = await fetch("/images/seal.png");
+    const sealBytes = await sealResponse.arrayBuffer();
+    const sealImage = await pdfDoc.embedPng(new Uint8Array(sealBytes));
+
+    const sealSize = 130;
+    const sealX = width - sealSize - 60; // Position at the right side with margin
+    const sealY = currentY - 20; // Vertically center with signature block
+
+    page.drawImage(sealImage, {
+      x: sealX,
+      y: sealY,
+      width: sealSize,
+      height: sealSize,
+    });
+  } catch {
+    // If seal image fails to load, continue without it
+    console.warn("Failed to load company seal image");
+  }
 
   // Save the PDF
   const pdfBytes = await pdfDoc.save();
@@ -294,11 +333,12 @@ export async function generateOfferLetterPdf(data: OfferLetterData): Promise<Uin
 // Generate offer letter and save locally (for preview/download)
 export async function generateAndDownloadOfferLetter(
   intern: Intern,
-  filename?: string
+  filename?: string,
+  domainLabel?: string
 ): Promise<void> {
   const data: OfferLetterData = {
     name: intern.name,
-    domain: INTERN_DOMAIN_LABELS[intern.domain],
+    domain: domainLabel || INTERN_DOMAIN_LABELS[intern.domain],
     startDate: intern.startDate,
     endDate: intern.endDate,
     mode: intern.mode ? INTERN_MODE_LABELS[intern.mode] : "Remote",
@@ -315,11 +355,12 @@ export async function generateAndDownloadOfferLetter(
 
 // Generate offer letter and upload to R2
 export async function generateAndUploadOfferLetter(
-  intern: Intern & { id: string }
+  intern: Intern & { id: string },
+  domainLabel?: string
 ): Promise<{ offerLetterUrl: string; offerLetterKey: string }> {
   const data: OfferLetterData = {
     name: intern.name,
-    domain: INTERN_DOMAIN_LABELS[intern.domain],
+    domain: domainLabel || INTERN_DOMAIN_LABELS[intern.domain],
     startDate: intern.startDate,
     endDate: intern.endDate,
     mode: intern.mode ? INTERN_MODE_LABELS[intern.mode] : "Remote",

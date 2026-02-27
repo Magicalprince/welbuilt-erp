@@ -126,7 +126,7 @@ export async function generateCertificatePdf(data: CertificateData): Promise<Uin
   const paragraphSegments = [
     { text: "Congratulations on your outstanding achievement in ", bold: false },
     { text: data.domain, bold: true },
-    { text: " at InternCourse during the ", bold: false },
+    { text: " at Welbuilt AI Solutions Pvt. Ltd. during the ", bold: false },
     { text: data.duration, bold: true },
     { text: " program held from ", bold: false },
     { text: startDateStr, bold: true },
@@ -241,11 +241,12 @@ export async function generateCertificatePdf(data: CertificateData): Promise<Uin
 // Generate certificate and save locally (for preview/download)
 export async function generateAndDownloadCertificate(
   intern: Intern,
-  filename?: string
+  filename?: string,
+  domainLabel?: string
 ): Promise<void> {
   const data: CertificateData = {
     name: intern.name,
-    domain: INTERN_DOMAIN_LABELS[intern.domain],
+    domain: domainLabel || INTERN_DOMAIN_LABELS[intern.domain],
     duration: intern.duration,
     startDate: intern.startDate,
     endDate: intern.endDate,
@@ -261,11 +262,12 @@ export async function generateAndDownloadCertificate(
 
 // Generate certificate and upload to R2
 export async function generateAndUploadCertificate(
-  intern: Intern & { id: string }
+  intern: Intern & { id: string },
+  domainLabel?: string
 ): Promise<{ certificateUrl: string; certificateKey: string }> {
   const data: CertificateData = {
     name: intern.name,
-    domain: INTERN_DOMAIN_LABELS[intern.domain],
+    domain: domainLabel || INTERN_DOMAIN_LABELS[intern.domain],
     duration: intern.duration,
     startDate: intern.startDate,
     endDate: intern.endDate,
