@@ -2,7 +2,6 @@ import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
 import fontkit from "@pdf-lib/fontkit";
 import { saveAs } from "file-saver";
 import type { Intern } from "@/types";
-import { INTERN_DOMAIN_LABELS } from "@/types";
 import { uploadFileToR2 } from "./r2Service";
 import { updateInternAttendance } from "./internService";
 
@@ -409,7 +408,7 @@ export async function generateAndDownloadAttendance(
 ): Promise<void> {
   const data: InternAttendanceData = {
     name: intern.name, internId: intern.internId,
-    designation: `Intern - ${INTERN_DOMAIN_LABELS[intern.domain]}`, department: "IT",
+    designation: `Intern - ${intern.domain}`, department: "IT",
     collegeName: intern.college, collegeAddress: formData.collegeAddress,
     startPeriod: intern.startDate, endPeriod: intern.endDate,
     totalInternshipDays: formData.totalInternshipDays, daysPresent: formData.daysPresent,
@@ -425,7 +424,7 @@ export async function generateAndUploadAttendance(
 ): Promise<{ attendanceUrl: string; attendanceKey: string }> {
   const data: InternAttendanceData = {
     name: intern.name, internId: intern.internId,
-    designation: `Intern - ${INTERN_DOMAIN_LABELS[intern.domain]}`, department: "IT",
+    designation: `Intern - ${intern.domain}`, department: "IT",
     collegeName: intern.college, collegeAddress: formData.collegeAddress,
     startPeriod: intern.startDate, endPeriod: intern.endDate,
     totalInternshipDays: formData.totalInternshipDays, daysPresent: formData.daysPresent,

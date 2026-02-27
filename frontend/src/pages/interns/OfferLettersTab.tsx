@@ -30,29 +30,17 @@ import {
 import { cn } from "@/lib/utils";
 import { useInterns, useCreateIntern, useDeleteIntern, internQueryKeys } from "@/hooks/useInterns";
 import { useQueryClient } from "@tanstack/react-query";
-import type { Intern, InternDomain, InternPaymentStatus, InternDuration, InternMode } from "@/types";
-import { INTERN_DOMAIN_LABELS, INTERN_MODE_LABELS } from "@/types";
+import type { Intern, InternPaymentStatus, InternDuration, InternMode } from "@/types";
+import { INTERN_MODE_LABELS } from "@/types";
 import {
   generateAndDownloadOfferLetter,
   generateAndUploadOfferLetter,
   bulkGenerateOfferLetters,
 } from "@/services/offerLetterService";
-import { mapDomainString } from "@/services/certificateService";
 import { deleteFileFromR2, extractFileKeyFromUrl, getSignedDownloadUrl } from "@/services/r2Service";
 import toast from "react-hot-toast";
 
-const domainOptions: { value: InternDomain | "ALL"; label: string }[] = [
-  { value: "ALL", label: "All Domains" },
-  { value: "WEB_DEVELOPMENT", label: "Web Development" },
-  { value: "APP_DEVELOPMENT", label: "App Development" },
-  { value: "AI_ML", label: "AI/ML" },
-  { value: "DATA_SCIENCE", label: "Data Science" },
-  { value: "UI_UX_DESIGN", label: "UI/UX Design" },
-  { value: "DIGITAL_MARKETING", label: "Digital Marketing" },
-  { value: "CLOUD_COMPUTING", label: "Cloud Computing" },
-  { value: "CYBER_SECURITY", label: "Cyber Security" },
-  { value: "OTHER", label: "Other" },
-];
+// domainOptions built dynamically from data inside the component
 
 const yearOptions = [
   { value: "ALL", label: "All Years" },
@@ -84,7 +72,7 @@ const modeOptions: { value: InternMode; label: string }[] = [
 export default function OfferLettersTab() {
   // State
   const [searchQuery, setSearchQuery] = useState("");
-  const [domainFilter, setDomainFilter] = useState<InternDomain | "ALL">("ALL");
+  const [domainFilter, setDomainFilter] = useState<string>("ALL");
   const [yearFilter, setYearFilter] = useState("ALL");
   const [paymentFilter, setPaymentFilter] = useState<InternPaymentStatus | "ALL">("ALL");
   const [showFilters, setShowFilters] = useState(false);
@@ -107,6 +95,11 @@ export default function OfferLettersTab() {
   const queryClient = useQueryClient();
   const { data: interns, isLoading } = useInterns();
   const deleteMutation = useDeleteIntern();
+
+  const domainOptions = useMemo(() => {
+    const domains = interns ? [...new Set(interns.map(i => i.domain).filter(Boolean))].sort() : [];
+    return [{ value: "ALL", label: "All Domains" }, ...domains.map(d => ({ value: d, label: d }))];
+  }, [interns]);
 
   // Refresh intern list
   const refreshInterns = () => {
@@ -345,7 +338,7 @@ export default function OfferLettersTab() {
             <Label className="text-xs mb-1 block">Domain</Label>
             <Select
               value={domainFilter}
-              onChange={(e) => setDomainFilter(e.target.value as InternDomain | "ALL")}
+              onChange={(e) => setDomainFilter(e.target.value)}
               options={domainOptions}
             />
           </div>
@@ -441,7 +434,7 @@ export default function OfferLettersTab() {
                       <td className="p-3 text-sm">{intern.college}</td>
                       <td className="p-3">
                         <Badge variant="secondary" className="text-xs">
-                          {INTERN_DOMAIN_LABELS[intern.domain]}
+                          {intern.domain}
                         </Badge>
                       </td>
                       <td className="p-3 text-sm">
@@ -663,14 +656,13 @@ function NewOfferLetterModal({
     }
 
     try {
-      const mappedDomain = mapDomainString(formData.domain) as InternDomain;
       const internId = await createMutation.mutateAsync({
         name: formData.name,
         email: formData.email,
         phone: formData.phone,
         college: formData.college,
         year: formData.year,
-        domain: mappedDomain,
+        domain: formData.domain.trim(),
         duration: formData.duration,
         startDate: new Date(formData.startDate),
         endDate: new Date(formData.endDate),
@@ -694,7 +686,7 @@ function NewOfferLetterModal({
           id: internId,
           internId: "",
           ...formData,
-          domain: mappedDomain,
+          domain: formData.domain.trim(),
           startDate: new Date(formData.startDate),
           endDate: new Date(formData.endDate),
           issueDate: new Date(formData.issueDate),
@@ -925,7 +917,7 @@ function EditOfferLetterModal({
         phone: intern.phone,
         college: intern.college,
         year: intern.year,
-        domain: INTERN_DOMAIN_LABELS[intern.domain] || "",
+        domain: intern.domain || "",
         duration: intern.duration,
         startDate: intern.startDate instanceof Date
           ? intern.startDate.toISOString().split("T")[0]
@@ -965,8 +957,6 @@ function EditOfferLetterModal({
 
     setSaving(true);
     try {
-      const mappedDomain = mapDomainString(formData.domain) as InternDomain;
-
       const { updateIntern } = await import("@/services/internService");
       await updateIntern(intern.id, {
         name: formData.name,
@@ -974,7 +964,7 @@ function EditOfferLetterModal({
         phone: formData.phone,
         college: formData.college,
         year: formData.year,
-        domain: mappedDomain,
+        domain: formData.domain.trim(),
         duration: formData.duration as InternDuration,
         startDate: new Date(formData.startDate),
         endDate: new Date(formData.endDate),
@@ -993,7 +983,7 @@ function EditOfferLetterModal({
         const updatedIntern: Intern & { id: string } = {
           ...intern,
           ...formData,
-          domain: mappedDomain,
+          domain: formData.domain.trim(),
           startDate: new Date(formData.startDate),
           endDate: new Date(formData.endDate),
           issueDate: intern.issueDate,
@@ -1259,7 +1249,7 @@ function BulkImportModal({
 
     try {
       const { createIntern, updateIntern } = await import("@/services/internService");
-      const { mapDomainString, mapDurationString, parseDateString } = await import("@/services/certificateService");
+      const { mapDurationString, parseDateString } = await import("@/services/certificateService");
 
       const createdInterns: Array<Intern & { id: string }> = [];
 
@@ -1271,7 +1261,7 @@ function BulkImportModal({
           phone: row.phone,
           college: row.college,
           year: row.year || "1st Year",
-          domain: mapDomainString(row.domain) as InternDomain,
+          domain: (row.domain || "Other").trim(),
           duration: mapDurationString(row.duration) as InternDuration,
           startDate: parseDateString(row.startDate),
           endDate: parseDateString(row.endDate),
@@ -1300,7 +1290,7 @@ function BulkImportModal({
           phone: row.phone,
           college: row.college,
           year: row.year || "1st Year",
-          domain: mapDomainString(row.domain) as InternDomain,
+          domain: (row.domain || "Other").trim(),
           duration: mapDurationString(row.duration) as InternDuration,
           startDate: parseDateString(row.startDate),
           endDate: parseDateString(row.endDate),

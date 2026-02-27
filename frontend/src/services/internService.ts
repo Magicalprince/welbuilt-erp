@@ -14,7 +14,7 @@ import {
   where,
 } from "./firestore";
 import { db } from "@/config/firebase";
-import type { Intern, InternDomain, InternPaymentStatus, InternDuration, InternMode } from "@/types";
+import type { Intern, InternPaymentStatus, InternDuration, InternMode } from "@/types";
 
 // Convert Firestore data to Intern type
 function convertIntern(data: Record<string, unknown>): Intern {
@@ -75,7 +75,7 @@ export async function getInternById(id: string): Promise<Intern | null> {
 export async function getInternsByFilter(filters: {
   college?: string;
   year?: string;
-  domain?: InternDomain;
+  domain?: string;
   paymentStatus?: InternPaymentStatus;
 }): Promise<Intern[]> {
   let interns = await getInterns();
@@ -105,7 +105,7 @@ export async function createIntern(data: {
   phone: string;
   college: string;
   year: string;
-  domain: InternDomain;
+  domain: string;
   duration: InternDuration;
   startDate: Date;
   endDate: Date;
@@ -132,7 +132,7 @@ export async function updateIntern(
     phone: string;
     college: string;
     year: string;
-    domain: InternDomain;
+    domain: string;
     duration: InternDuration;
     startDate: Date;
     endDate: Date;
@@ -173,7 +173,7 @@ export async function bulkCreateInterns(
     phone: string;
     college: string;
     year: string;
-    domain: InternDomain;
+    domain: string;
     duration: InternDuration;
     startDate: Date;
     endDate: Date;

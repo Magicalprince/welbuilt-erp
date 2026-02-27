@@ -2,7 +2,7 @@ import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
 import fontkit from "@pdf-lib/fontkit";
 import { saveAs } from "file-saver";
 import type { Intern } from "@/types";
-import { INTERN_DOMAIN_LABELS, INTERN_MODE_LABELS } from "@/types";
+import { INTERN_MODE_LABELS } from "@/types";
 import { uploadFileToR2 } from "./r2Service";
 import { updateInternOfferLetter } from "./internService";
 
@@ -343,7 +343,7 @@ export async function generateAndDownloadOfferLetter(
 ): Promise<void> {
   const data: OfferLetterData = {
     name: intern.name,
-    domain: domainLabel || INTERN_DOMAIN_LABELS[intern.domain],
+    domain: domainLabel || intern.domain,
     startDate: intern.startDate,
     endDate: intern.endDate,
     mode: intern.mode ? INTERN_MODE_LABELS[intern.mode] : "Remote",
@@ -365,7 +365,7 @@ export async function generateAndUploadOfferLetter(
 ): Promise<{ offerLetterUrl: string; offerLetterKey: string }> {
   const data: OfferLetterData = {
     name: intern.name,
-    domain: domainLabel || INTERN_DOMAIN_LABELS[intern.domain],
+    domain: domainLabel || intern.domain,
     startDate: intern.startDate,
     endDate: intern.endDate,
     mode: intern.mode ? INTERN_MODE_LABELS[intern.mode] : "Remote",

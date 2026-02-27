@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import type { Intern, InternDomain, InternPaymentStatus, InternDuration } from "@/types";
+import type { Intern, InternPaymentStatus, InternDuration } from "@/types";
 import {
   getInterns,
   getInternById,
@@ -45,7 +45,7 @@ export function useCreateIntern() {
       phone: string;
       college: string;
       year: string;
-      domain: InternDomain;
+      domain: string;
       duration: InternDuration;
       startDate: Date;
       endDate: Date;

@@ -301,29 +301,6 @@ export interface Communication {
 // Intern Types
 export type InternPaymentStatus = "PAID" | "UNPAID";
 
-export type InternDomain =
-  | "WEB_DEVELOPMENT"
-  | "APP_DEVELOPMENT"
-  | "AI_ML"
-  | "DATA_SCIENCE"
-  | "UI_UX_DESIGN"
-  | "DIGITAL_MARKETING"
-  | "CLOUD_COMPUTING"
-  | "CYBER_SECURITY"
-  | "OTHER";
-
-export const INTERN_DOMAIN_LABELS: Record<InternDomain, string> = {
-  WEB_DEVELOPMENT: "Web Development",
-  APP_DEVELOPMENT: "App Development",
-  AI_ML: "AI/ML",
-  DATA_SCIENCE: "Data Science",
-  UI_UX_DESIGN: "UI/UX Design",
-  DIGITAL_MARKETING: "Digital Marketing",
-  CLOUD_COMPUTING: "Cloud Computing",
-  CYBER_SECURITY: "Cyber Security",
-  OTHER: "Other",
-};
-
 export type InternDuration = "1-Month" | "2-Month" | "3-Month" | "6-Month";
 
 export type InternMode = "REMOTE" | "HYBRID" | "ON_SITE";
@@ -342,7 +319,7 @@ export interface Intern {
   phone: string;
   college: string;
   year: string; // "1st Year", "2nd Year", "3rd Year", "4th Year"
-  domain: InternDomain;
+  domain: string;
   duration: InternDuration;
   startDate: Date;
   endDate: Date;

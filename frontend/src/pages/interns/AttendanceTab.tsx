@@ -29,8 +29,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useInterns, useDeleteIntern, internQueryKeys } from "@/hooks/useInterns";
 import { useQueryClient } from "@tanstack/react-query";
-import type { Intern, InternDomain, InternPaymentStatus } from "@/types";
-import { INTERN_DOMAIN_LABELS } from "@/types";
+import type { Intern, InternPaymentStatus } from "@/types";
 import {
   generateAndDownloadAttendance,
   generateAndUploadAttendance,
@@ -41,18 +40,7 @@ import { updateIntern } from "@/services/internService";
 import { deleteFileFromR2, extractFileKeyFromUrl, getSignedDownloadUrl } from "@/services/r2Service";
 import toast from "react-hot-toast";
 
-const domainOptions: { value: InternDomain | "ALL"; label: string }[] = [
-  { value: "ALL", label: "All Domains" },
-  { value: "WEB_DEVELOPMENT", label: "Web Development" },
-  { value: "APP_DEVELOPMENT", label: "App Development" },
-  { value: "AI_ML", label: "AI/ML" },
-  { value: "DATA_SCIENCE", label: "Data Science" },
-  { value: "UI_UX_DESIGN", label: "UI/UX Design" },
-  { value: "DIGITAL_MARKETING", label: "Digital Marketing" },
-  { value: "CLOUD_COMPUTING", label: "Cloud Computing" },
-  { value: "CYBER_SECURITY", label: "Cyber Security" },
-  { value: "OTHER", label: "Other" },
-];
+// domainOptions built dynamically from data inside the component
 
 const yearOptions = [
   { value: "ALL", label: "All Years" },
@@ -73,7 +61,7 @@ type Mode = "intern" | "employee";
 export default function AttendanceTab() {
   const [mode, setMode] = useState<Mode>("intern");
   const [searchQuery, setSearchQuery] = useState("");
-  const [domainFilter, setDomainFilter] = useState<InternDomain | "ALL">("ALL");
+  const [domainFilter, setDomainFilter] = useState<string>("ALL");
   const [yearFilter, setYearFilter] = useState("ALL");
   const [paymentFilter, setPaymentFilter] = useState<InternPaymentStatus | "ALL">("ALL");
   const [showFilters, setShowFilters] = useState(false);
@@ -93,6 +81,11 @@ export default function AttendanceTab() {
   const queryClient = useQueryClient();
   const { data: interns, isLoading } = useInterns();
   const deleteMutation = useDeleteIntern();
+
+  const domainOptions = useMemo(() => {
+    const domains = interns ? [...new Set(interns.map(i => i.domain).filter(Boolean))].sort() : [];
+    return [{ value: "ALL", label: "All Domains" }, ...domains.map(d => ({ value: d, label: d }))];
+  }, [interns]);
 
   const refreshInterns = () => {
     queryClient.invalidateQueries({ queryKey: internQueryKeys.all });
@@ -249,7 +242,7 @@ export default function AttendanceTab() {
                 <Label className="text-xs mb-1 block">Domain</Label>
                 <Select
                   value={domainFilter}
-                  onChange={(e) => setDomainFilter(e.target.value as InternDomain | "ALL")}
+                  onChange={(e) => setDomainFilter(e.target.value)}
                   options={domainOptions}
                 />
               </div>
@@ -353,7 +346,7 @@ export default function AttendanceTab() {
                             <td className="p-3 text-sm">{intern.college}</td>
                             <td className="p-3">
                               <Badge variant="secondary" className="text-xs">
-                                {INTERN_DOMAIN_LABELS[intern.domain]}
+                                {intern.domain}
                               </Badge>
                             </td>
                             <td className="p-3 text-sm">{hasAttendanceData ? intern.totalInternshipDays : <span className="text-muted-foreground">-</span>}</td>
@@ -558,7 +551,7 @@ function GenerateAttendanceModal({
           <p className="text-sm"><strong>Name:</strong> {intern.name}</p>
           <p className="text-sm"><strong>ID:</strong> {intern.internId}</p>
           <p className="text-sm"><strong>College:</strong> {intern.college}</p>
-          <p className="text-sm"><strong>Domain:</strong> {INTERN_DOMAIN_LABELS[intern.domain]}</p>
+          <p className="text-sm"><strong>Domain:</strong> {intern.domain}</p>
           <p className="text-sm">
             <strong>Period:</strong> {intern.startDate.toLocaleDateString()} - {intern.endDate.toLocaleDateString()}
           </p>

@@ -2,7 +2,6 @@ import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
 import fontkit from "@pdf-lib/fontkit";
 import { saveAs } from "file-saver";
 import type { Intern } from "@/types";
-import { INTERN_DOMAIN_LABELS } from "@/types";
 import { uploadFileToR2 } from "./r2Service";
 import { updateInternCertificate } from "./internService";
 
@@ -246,7 +245,7 @@ export async function generateAndDownloadCertificate(
 ): Promise<void> {
   const data: CertificateData = {
     name: intern.name,
-    domain: domainLabel || INTERN_DOMAIN_LABELS[intern.domain],
+    domain: domainLabel || intern.domain,
     duration: intern.duration,
     startDate: intern.startDate,
     endDate: intern.endDate,
@@ -267,7 +266,7 @@ export async function generateAndUploadCertificate(
 ): Promise<{ certificateUrl: string; certificateKey: string }> {
   const data: CertificateData = {
     name: intern.name,
-    domain: domainLabel || INTERN_DOMAIN_LABELS[intern.domain],
+    domain: domainLabel || intern.domain,
     duration: intern.duration,
     startDate: intern.startDate,
     endDate: intern.endDate,
@@ -403,35 +402,6 @@ export function validateInternData(data: {
   if (!data.endDate?.trim()) errors.push("End Date is required");
 
   return { valid: errors.length === 0, errors };
-}
-
-// Map domain string to InternDomain type
-export function mapDomainString(domain: string): string {
-  const domainMap: Record<string, string> = {
-    "web development": "WEB_DEVELOPMENT",
-    "web dev": "WEB_DEVELOPMENT",
-    "app development": "APP_DEVELOPMENT",
-    "app dev": "APP_DEVELOPMENT",
-    "mobile development": "APP_DEVELOPMENT",
-    "ai/ml": "AI_ML",
-    "ai ml": "AI_ML",
-    "machine learning": "AI_ML",
-    "artificial intelligence": "AI_ML",
-    "data science": "DATA_SCIENCE",
-    "ui/ux design": "UI_UX_DESIGN",
-    "ui ux": "UI_UX_DESIGN",
-    "design": "UI_UX_DESIGN",
-    "digital marketing": "DIGITAL_MARKETING",
-    "marketing": "DIGITAL_MARKETING",
-    "cloud computing": "CLOUD_COMPUTING",
-    "cloud": "CLOUD_COMPUTING",
-    "cyber security": "CYBER_SECURITY",
-    "cybersecurity": "CYBER_SECURITY",
-    "security": "CYBER_SECURITY",
-  };
-
-  const normalized = domain.toLowerCase().trim();
-  return domainMap[normalized] || "OTHER";
 }
 
 // Map duration string to InternDuration type
