@@ -323,35 +323,6 @@ export default function OfferLettersTab() {
         </div>
 
         <div className="flex gap-2">
-          {selectedInterns.length > 0 && (
-            <>
-              <Button
-                variant="outline"
-                onClick={handleBulkGenerate}
-                disabled={bulkGenerating}
-              >
-                {bulkGenerating ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Generating ({bulkProgress.current}/{bulkProgress.total})
-                  </>
-                ) : (
-                  <>
-                    <FileText className="h-4 w-4 mr-2" />
-                    Generate Selected ({selectedInterns.length})
-                  </>
-                )}
-              </Button>
-              <Button
-                variant="destructive"
-                onClick={() => setBulkDeleteConfirm(true)}
-                disabled={bulkDeleteMutation.isPending}
-              >
-                <Trash2 className="h-4 w-4 mr-2" />
-                Delete Selected ({selectedInterns.length})
-              </Button>
-            </>
-          )}
           <Button variant="outline" onClick={() => setIsBulkModalOpen(true)}>
             <Upload className="h-4 w-4 mr-2" />
             Bulk Import
@@ -411,6 +382,32 @@ export default function OfferLettersTab() {
         </motion.div>
       )}
 
+      {/* Bulk action bar — slides in when rows are selected */}
+      {selectedInterns.length > 0 && (
+        <motion.div
+          initial={{ opacity: 0, y: -8 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="flex items-center justify-between gap-3 px-4 py-2.5 bg-primary/10 border border-primary/20 rounded-lg"
+        >
+          <span className="text-sm font-medium text-primary">
+            {selectedInterns.length} intern{selectedInterns.length > 1 ? "s" : ""} selected
+          </span>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={handleBulkGenerate} disabled={bulkGenerating}>
+              {bulkGenerating ? (
+                <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />Generating ({bulkProgress.current}/{bulkProgress.total})</>
+              ) : (
+                <><FileText className="h-3.5 w-3.5 mr-1.5" />Generate Offer Letters</>
+              )}
+            </Button>
+            <Button variant="destructive" size="sm" onClick={() => setBulkDeleteConfirm(true)} disabled={bulkDeleteMutation.isPending}>
+              <Trash2 className="h-3.5 w-3.5 mr-1.5" />
+              Delete Selected
+            </Button>
+          </div>
+        </motion.div>
+      )}
+
       {/* Table */}
       {isLoading ? (
         <div className="space-y-2">
@@ -431,142 +428,81 @@ export default function OfferLettersTab() {
       ) : (
         <Card>
           <CardContent className="p-0">
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-muted/50">
-                  <tr>
-                    <th className="p-3 text-left">
+            <table className="w-full">
+              <thead className="bg-muted/50">
+                <tr>
+                  <th className="p-3 text-left w-10">
+                    <Checkbox
+                      checked={selectedInterns.length === filteredInterns.length && filteredInterns.length > 0}
+                      onChange={toggleSelectAll}
+                    />
+                  </th>
+                  <th className="p-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide w-24">ID</th>
+                  <th className="p-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide">Intern</th>
+                  <th className="p-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide">College</th>
+                  <th className="p-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide w-36">Domain</th>
+                  <th className="p-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide w-48">Project</th>
+                  <th className="p-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide w-48">Offer Letter</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredInterns.map((intern) => (
+                  <tr key={intern.id} className={cn("border-t hover:bg-muted/30 transition-colors", selectedInterns.includes(intern.id) && "bg-primary/5")}>
+                    <td className="p-3">
                       <Checkbox
-                        checked={selectedInterns.length === filteredInterns.length && filteredInterns.length > 0}
-                        onChange={toggleSelectAll}
+                        checked={selectedInterns.includes(intern.id)}
+                        onChange={() => toggleSelection(intern.id)}
                       />
-                    </th>
-                    <th className="p-3 text-left text-sm font-medium">ID</th>
-                    <th className="p-3 text-left text-sm font-medium">Name</th>
-                    <th className="p-3 text-left text-sm font-medium">College</th>
-                    <th className="p-3 text-left text-sm font-medium">Domain</th>
-                    <th className="p-3 text-left text-sm font-medium">Mode</th>
-                    <th className="p-3 text-left text-sm font-medium">Stipend</th>
-                    <th className="p-3 text-left text-sm font-medium">Project</th>
-                    <th className="p-3 text-left text-sm font-medium">Offer Letter</th>
-                    <th className="p-3 text-left text-sm font-medium">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredInterns.map((intern) => (
-                    <tr key={intern.id} className="border-t hover:bg-muted/30">
-                      <td className="p-3">
-                        <Checkbox
-                          checked={selectedInterns.includes(intern.id)}
-                          onChange={() => toggleSelection(intern.id)}
-                        />
-                      </td>
-                      <td className="p-3 text-sm font-mono">{intern.internId}</td>
-                      <td className="p-3">
-                        <div>
-                          <p className="font-medium text-sm">{intern.name}</p>
-                          <p className="text-xs text-muted-foreground">{intern.email}</p>
-                        </div>
-                      </td>
-                      <td className="p-3 text-sm">{intern.college}</td>
-                      <td className="p-3">
-                        <Badge variant="secondary" className="text-xs">
-                          {intern.domain}
-                        </Badge>
-                      </td>
-                      <td className="p-3 text-sm">
-                        {intern.mode ? INTERN_MODE_LABELS[intern.mode] : "-"}
-                      </td>
-                      <td className="p-3 text-sm">
-                        {intern.stipend !== undefined && intern.stipend > 0 ? (
-                          `₹${intern.stipend.toLocaleString()}`
-                        ) : (
-                          <span className="text-muted-foreground">Unpaid</span>
-                        )}
-                      </td>
-                      <td className="p-3 text-sm max-w-[150px] truncate" title={intern.projectTitle}>
-                        {intern.projectTitle || "-"}
-                      </td>
-                      <td className="p-3">
+                    </td>
+                    <td className="p-3 text-xs font-mono text-muted-foreground">{intern.internId}</td>
+                    <td className="p-3">
+                      <p className="font-medium text-sm">{intern.name}</p>
+                      <p className="text-xs text-muted-foreground">{intern.email}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {intern.mode ? INTERN_MODE_LABELS[intern.mode] : "Remote"} ·{" "}
+                        {intern.stipend && intern.stipend > 0 ? `₹${intern.stipend.toLocaleString()}` : "Unpaid"}
+                      </p>
+                    </td>
+                    <td className="p-3 text-sm text-muted-foreground">{intern.college}</td>
+                    <td className="p-3">
+                      <Badge variant="secondary" className="text-xs">{intern.domain}</Badge>
+                    </td>
+                    <td className="p-3 text-sm text-muted-foreground max-w-[180px] truncate" title={intern.projectTitle}>
+                      {intern.projectTitle || "-"}
+                    </td>
+                    <td className="p-3">
+                      <div className="flex items-center gap-1">
                         {intern.offerLetterUrl ? (
-                          <div className="flex items-center gap-1">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-7 px-2 text-primary"
-                              onClick={() => handleViewOfferLetter(intern)}
-                            >
-                              <Eye className="h-3 w-3 mr-1" />
-                              View
+                          <>
+                            <Button variant="ghost" size="sm" className="h-7 px-2 text-primary text-xs" onClick={() => handleViewOfferLetter(intern)} title="View">
+                              <Eye className="h-3.5 w-3.5 mr-1" />View
                             </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-7 px-2"
-                              onClick={() => handleDownloadOfferLetter(intern)}
-                            >
-                              <Download className="h-3 w-3" />
+                            <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => handleDownloadOfferLetter(intern)} title="Download">
+                              <Download className="h-3.5 w-3.5" />
                             </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-7 px-2"
-                              title="Regenerate offer letter"
-                              onClick={() => handleRegenerateOfferLetter(intern as Intern & { id: string })}
-                              disabled={generatingLetter === intern.id}
-                            >
-                              {generatingLetter === intern.id ? (
-                                <Loader2 className="h-3 w-3 animate-spin" />
-                              ) : (
-                                <RefreshCw className="h-3 w-3" />
-                              )}
+                            <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => handleRegenerateOfferLetter(intern as Intern & { id: string })} disabled={generatingLetter === intern.id} title="Regenerate">
+                              {generatingLetter === intern.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
                             </Button>
-                          </div>
+                          </>
                         ) : (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-7 text-xs"
-                            onClick={() => handleGenerateOfferLetter(intern as Intern & { id: string })}
-                            disabled={generatingLetter === intern.id}
-                          >
-                            {generatingLetter === intern.id ? (
-                              <Loader2 className="h-3 w-3 animate-spin" />
-                            ) : (
-                              <>
-                                <FileText className="h-3 w-3 mr-1" />
-                                Generate
-                              </>
-                            )}
+                          <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => handleGenerateOfferLetter(intern as Intern & { id: string })} disabled={generatingLetter === intern.id}>
+                            {generatingLetter === intern.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <><FileText className="h-3.5 w-3.5 mr-1" />Generate</>}
                           </Button>
                         )}
-                      </td>
-                      <td className="p-3">
-                        <div className="flex items-center gap-1">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-7 px-2"
-                            title="Edit intern"
-                            onClick={() => setEditIntern(intern)}
-                          >
-                            <Pencil className="h-3 w-3" />
+                        <div className="ml-1 border-l pl-1 flex gap-0.5">
+                          <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => setEditIntern(intern)} title="Edit">
+                            <Pencil className="h-3.5 w-3.5" />
                           </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-7 px-2 text-destructive hover:text-destructive"
-                            onClick={() => setDeleteConfirm(intern)}
-                          >
-                            <Trash2 className="h-3 w-3" />
+                          <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-destructive hover:text-destructive" onClick={() => setDeleteConfirm(intern)} title="Delete">
+                            <Trash2 className="h-3.5 w-3.5" />
                           </Button>
                         </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </CardContent>
         </Card>
       )}
