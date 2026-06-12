@@ -6,6 +6,7 @@ import {
   createIntern,
   updateIntern,
   deleteIntern,
+  bulkDeleteInterns,
 } from "@/services/internService";
 
 // Query keys
@@ -78,6 +79,18 @@ export function useDeleteIntern() {
 
   return useMutation({
     mutationFn: (id: string) => deleteIntern(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: internQueryKeys.all });
+    },
+  });
+}
+
+// Bulk delete interns
+export function useBulkDeleteInterns() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (ids: string[]) => bulkDeleteInterns(ids),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: internQueryKeys.all });
     },

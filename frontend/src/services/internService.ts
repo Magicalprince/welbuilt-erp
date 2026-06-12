@@ -165,6 +165,11 @@ export async function deleteIntern(id: string): Promise<void> {
   return deleteDocument(COLLECTIONS.INTERNS, id);
 }
 
+// Bulk delete interns
+export async function bulkDeleteInterns(ids: string[]): Promise<void> {
+  await Promise.all(ids.map((id) => deleteDocument(COLLECTIONS.INTERNS, id)));
+}
+
 // Bulk create interns
 export async function bulkCreateInterns(
   internsData: Array<{

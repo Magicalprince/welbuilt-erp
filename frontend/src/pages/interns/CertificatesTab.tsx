@@ -28,7 +28,7 @@ import {
   Checkbox,
 } from "@/components/ui";
 import { cn } from "@/lib/utils";
-import { useInterns, useCreateIntern, useUpdateIntern, useDeleteIntern, internQueryKeys } from "@/hooks/useInterns";
+import { useInterns, useCreateIntern, useUpdateIntern, useDeleteIntern, useBulkDeleteInterns, internQueryKeys } from "@/hooks/useInterns";
 import { useQueryClient } from "@tanstack/react-query";
 import type { Intern, InternPaymentStatus, InternDuration } from "@/types";
 import {
@@ -39,7 +39,7 @@ import {
   mapDurationString,
   parseDateString,
 } from "@/services/certificateService";
-import { bulkCreateInterns } from "@/services/internService";
+import { bulkCreateInterns, getInternById } from "@/services/internService";
 import { deleteFileFromR2, extractFileKeyFromUrl, getSignedDownloadUrl } from "@/services/r2Service";
 import toast from "react-hot-toast";
 
@@ -88,10 +88,14 @@ export default function CertificatesTab() {
   const [bulkGenerating, setBulkGenerating] = useState(false);
   const [bulkProgress, setBulkProgress] = useState({ current: 0, total: 0, name: "" });
 
+  // Modal for bulk delete confirmation
+  const [bulkDeleteConfirm, setBulkDeleteConfirm] = useState(false);
+
   // Data
   const queryClient = useQueryClient();
   const { data: interns, isLoading } = useInterns();
   const deleteMutation = useDeleteIntern();
+  const bulkDeleteMutation = useBulkDeleteInterns();
 
   const domainOptions = useMemo(() => {
     const domains = interns ? [...new Set(interns.map(i => i.domain).filter(Boolean))].sort() : [];
@@ -268,6 +272,30 @@ export default function CertificatesTab() {
     }
   };
 
+  // Bulk delete selected interns
+  const handleBulkDelete = async () => {
+    const internsToDelete = filteredInterns.filter((i) => selectedInterns.includes(i.id));
+
+    // Delete R2 files first
+    await Promise.allSettled(
+      internsToDelete
+        .filter((i) => i.certificateUrl)
+        .map((i) => {
+          const key = extractFileKeyFromUrl(i.certificateUrl!);
+          return key ? deleteFileFromR2(key) : Promise.resolve();
+        })
+    );
+
+    try {
+      await bulkDeleteMutation.mutateAsync(selectedInterns);
+      toast.success(`Deleted ${selectedInterns.length} interns`);
+      setSelectedInterns([]);
+      setBulkDeleteConfirm(false);
+    } catch {
+      toast.error("Failed to delete selected interns");
+    }
+  };
+
   return (
     <div className="space-y-4">
       {/* Action bar */}
@@ -295,23 +323,33 @@ export default function CertificatesTab() {
 
         <div className="flex gap-2">
           {selectedInterns.length > 0 && (
-            <Button
-              variant="outline"
-              onClick={handleBulkGenerate}
-              disabled={bulkGenerating}
-            >
-              {bulkGenerating ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Generating ({bulkProgress.current}/{bulkProgress.total})
-                </>
-              ) : (
-                <>
-                  <Award className="h-4 w-4 mr-2" />
-                  Generate Selected ({selectedInterns.length})
-                </>
-              )}
-            </Button>
+            <>
+              <Button
+                variant="outline"
+                onClick={handleBulkGenerate}
+                disabled={bulkGenerating}
+              >
+                {bulkGenerating ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Generating ({bulkProgress.current}/{bulkProgress.total})
+                  </>
+                ) : (
+                  <>
+                    <Award className="h-4 w-4 mr-2" />
+                    Generate Selected ({selectedInterns.length})
+                  </>
+                )}
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={() => setBulkDeleteConfirm(true)}
+                disabled={bulkDeleteMutation.isPending}
+              >
+                <Trash2 className="h-4 w-4 mr-2" />
+                Delete Selected ({selectedInterns.length})
+              </Button>
+            </>
           )}
           <Button variant="outline" onClick={() => setIsBulkModalOpen(true)}>
             <Upload className="h-4 w-4 mr-2" />
@@ -547,6 +585,7 @@ export default function CertificatesTab() {
       <BulkImportModal
         isOpen={isBulkModalOpen}
         onClose={() => setIsBulkModalOpen(false)}
+        onImportComplete={refreshInterns}
       />
 
       {/* Delete Confirmation */}
@@ -570,6 +609,33 @@ export default function CertificatesTab() {
             disabled={deleteMutation.isPending}
           >
             {deleteMutation.isPending ? "Deleting..." : "Delete"}
+          </Button>
+        </div>
+      </Modal>
+
+      {/* Bulk Delete Confirmation */}
+      <Modal
+        isOpen={bulkDeleteConfirm}
+        onClose={() => setBulkDeleteConfirm(false)}
+        title="Delete Selected Interns"
+      >
+        <p>
+          Are you sure you want to delete <strong>{selectedInterns.length} interns</strong>?
+        </p>
+        <p className="text-sm text-muted-foreground mt-2">
+          This will also delete their certificates from storage. This action cannot be undone.
+        </p>
+        <div className="flex gap-3 mt-4">
+          <Button variant="outline" className="flex-1" onClick={() => setBulkDeleteConfirm(false)}>
+            Cancel
+          </Button>
+          <Button
+            variant="destructive"
+            className="flex-1"
+            onClick={handleBulkDelete}
+            disabled={bulkDeleteMutation.isPending}
+          >
+            {bulkDeleteMutation.isPending ? "Deleting..." : `Delete ${selectedInterns.length} Interns`}
           </Button>
         </div>
       </Modal>
@@ -637,26 +703,31 @@ function NewCertificateModal({
     }
 
     try {
+      const startDate = parseDateString(formData.startDate);
+      const endDate = parseDateString(formData.endDate);
+      const issueDate = parseDateString(formData.issueDate);
+
       const internId = await createMutation.mutateAsync({
         ...formData,
         domain: formData.domain.trim(),
-        startDate: new Date(formData.startDate),
-        endDate: new Date(formData.endDate),
-        issueDate: new Date(formData.issueDate),
+        startDate,
+        endDate,
+        issueDate,
       });
 
       toast.success("Intern added successfully");
 
       if (generateCert) {
-        // Generate certificate after creation
+        // Fetch the created intern to get the real internId from Firestore
+        const createdIntern = await getInternById(internId);
         const intern: Intern & { id: string } = {
           id: internId,
-          internId: "", // Will be fetched
+          internId: createdIntern?.internId ?? "",
           ...formData,
           domain: formData.domain.trim(),
-          startDate: new Date(formData.startDate),
-          endDate: new Date(formData.endDate),
-          issueDate: new Date(formData.issueDate),
+          startDate,
+          endDate,
+          issueDate,
           createdAt: new Date(),
           updatedAt: new Date(),
         };
@@ -850,9 +921,6 @@ function EditCertificateModal({
   const [regenerateCert, setRegenerateCert] = useState(true);
   const [saving, setSaving] = useState(false);
 
-  // Pre-fill form when intern changes
-  useState(() => {});
-  // Use effect-like pattern with key
   const populateForm = () => {
     if (intern) {
       setFormData({
@@ -897,6 +965,10 @@ function EditCertificateModal({
 
     setSaving(true);
     try {
+      const startDate = parseDateString(formData.startDate);
+      const endDate = parseDateString(formData.endDate);
+      const issueDate = parseDateString(formData.issueDate);
+
       await updateMutation.mutateAsync({
         id: intern.id,
         data: {
@@ -907,9 +979,9 @@ function EditCertificateModal({
           year: formData.year,
           domain: formData.domain.trim(),
           duration: formData.duration as InternDuration,
-          startDate: new Date(formData.startDate),
-          endDate: new Date(formData.endDate),
-          issueDate: new Date(formData.issueDate),
+          startDate,
+          endDate,
+          issueDate,
           paymentStatus: formData.paymentStatus,
         },
       });
@@ -921,9 +993,9 @@ function EditCertificateModal({
           ...intern,
           ...formData,
           domain: formData.domain.trim(),
-          startDate: new Date(formData.startDate),
-          endDate: new Date(formData.endDate),
-          issueDate: new Date(formData.issueDate),
+          startDate,
+          endDate,
+          issueDate,
         };
 
         try {
@@ -1086,9 +1158,11 @@ function EditCertificateModal({
 function BulkImportModal({
   isOpen,
   onClose,
+  onImportComplete,
 }: {
   isOpen: boolean;
   onClose: () => void;
+  onImportComplete?: () => void;
 }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
@@ -1146,15 +1220,24 @@ function BulkImportModal({
       toast.success(`Imported ${ids.length} interns`);
 
       // Generate certificates if selected
-      if (generateCerts) {
-        toast.loading("Generating certificates...");
-        // This would require fetching the created interns with their IDs
-        // For now, we'll skip bulk certificate generation during import
+      if (generateCerts && ids.length > 0) {
+        toast.loading("Generating certificates...", { id: "bulk-cert-gen" });
+        // Fetch created interns with their real internIds
+        const createdInterns: Array<Intern & { id: string }> = [];
+        for (let i = 0; i < ids.length; i++) {
+          const intern = await getInternById(ids[i]);
+          if (intern) createdInterns.push({ ...intern, id: ids[i] });
+        }
+        const results = await bulkGenerateCertificates(createdInterns);
+        const successful = results.filter((r) => r.success).length;
+        toast.dismiss("bulk-cert-gen");
+        toast.success(`Generated ${successful} certificates`);
       }
 
       // Reset and close
       setFile(null);
       setParsedData([]);
+      onImportComplete?.();
       onClose();
     } catch (error) {
       toast.error("Import failed");

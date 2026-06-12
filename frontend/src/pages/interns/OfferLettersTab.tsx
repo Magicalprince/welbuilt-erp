@@ -28,7 +28,7 @@ import {
   Checkbox,
 } from "@/components/ui";
 import { cn } from "@/lib/utils";
-import { useInterns, useCreateIntern, useDeleteIntern, internQueryKeys } from "@/hooks/useInterns";
+import { useInterns, useCreateIntern, useDeleteIntern, useBulkDeleteInterns, internQueryKeys } from "@/hooks/useInterns";
 import { useQueryClient } from "@tanstack/react-query";
 import type { Intern, InternPaymentStatus, InternDuration, InternMode } from "@/types";
 import { INTERN_MODE_LABELS } from "@/types";
@@ -37,6 +37,8 @@ import {
   generateAndUploadOfferLetter,
   bulkGenerateOfferLetters,
 } from "@/services/offerLetterService";
+import { parseDateString } from "@/services/certificateService";
+import { getInternById } from "@/services/internService";
 import { deleteFileFromR2, extractFileKeyFromUrl, getSignedDownloadUrl } from "@/services/r2Service";
 import toast from "react-hot-toast";
 
@@ -90,11 +92,13 @@ export default function OfferLettersTab() {
   const [generatingLetter, setGeneratingLetter] = useState<string | null>(null);
   const [bulkGenerating, setBulkGenerating] = useState(false);
   const [bulkProgress, setBulkProgress] = useState({ current: 0, total: 0, name: "" });
+  const [bulkDeleteConfirm, setBulkDeleteConfirm] = useState(false);
 
   // Data
   const queryClient = useQueryClient();
   const { data: interns, isLoading } = useInterns();
   const deleteMutation = useDeleteIntern();
+  const bulkDeleteMutation = useBulkDeleteInterns();
 
   const domainOptions = useMemo(() => {
     const domains = interns ? [...new Set(interns.map(i => i.domain).filter(Boolean))].sort() : [];
@@ -270,6 +274,29 @@ export default function OfferLettersTab() {
     }
   };
 
+  // Bulk delete selected interns
+  const handleBulkDelete = async () => {
+    const internsToDelete = filteredInterns.filter((i) => selectedInterns.includes(i.id));
+
+    await Promise.allSettled(
+      internsToDelete
+        .filter((i) => i.offerLetterUrl)
+        .map((i) => {
+          const key = extractFileKeyFromUrl(i.offerLetterUrl!);
+          return key ? deleteFileFromR2(key) : Promise.resolve();
+        })
+    );
+
+    try {
+      await bulkDeleteMutation.mutateAsync(selectedInterns);
+      toast.success(`Deleted ${selectedInterns.length} interns`);
+      setSelectedInterns([]);
+      setBulkDeleteConfirm(false);
+    } catch {
+      toast.error("Failed to delete selected interns");
+    }
+  };
+
   return (
     <div className="space-y-4">
       {/* Action bar */}
@@ -297,23 +324,33 @@ export default function OfferLettersTab() {
 
         <div className="flex gap-2">
           {selectedInterns.length > 0 && (
-            <Button
-              variant="outline"
-              onClick={handleBulkGenerate}
-              disabled={bulkGenerating}
-            >
-              {bulkGenerating ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Generating ({bulkProgress.current}/{bulkProgress.total})
-                </>
-              ) : (
-                <>
-                  <FileText className="h-4 w-4 mr-2" />
-                  Generate Selected ({selectedInterns.length})
-                </>
-              )}
-            </Button>
+            <>
+              <Button
+                variant="outline"
+                onClick={handleBulkGenerate}
+                disabled={bulkGenerating}
+              >
+                {bulkGenerating ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Generating ({bulkProgress.current}/{bulkProgress.total})
+                  </>
+                ) : (
+                  <>
+                    <FileText className="h-4 w-4 mr-2" />
+                    Generate Selected ({selectedInterns.length})
+                  </>
+                )}
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={() => setBulkDeleteConfirm(true)}
+                disabled={bulkDeleteMutation.isPending}
+              >
+                <Trash2 className="h-4 w-4 mr-2" />
+                Delete Selected ({selectedInterns.length})
+              </Button>
+            </>
           )}
           <Button variant="outline" onClick={() => setIsBulkModalOpen(true)}>
             <Upload className="h-4 w-4 mr-2" />
@@ -580,6 +617,33 @@ export default function OfferLettersTab() {
           </Button>
         </div>
       </Modal>
+
+      {/* Bulk Delete Confirmation */}
+      <Modal
+        isOpen={bulkDeleteConfirm}
+        onClose={() => setBulkDeleteConfirm(false)}
+        title="Delete Selected Interns"
+      >
+        <p>
+          Are you sure you want to delete <strong>{selectedInterns.length} interns</strong>?
+        </p>
+        <p className="text-sm text-muted-foreground mt-2">
+          This will also delete their offer letters from storage. This action cannot be undone.
+        </p>
+        <div className="flex gap-3 mt-4">
+          <Button variant="outline" className="flex-1" onClick={() => setBulkDeleteConfirm(false)}>
+            Cancel
+          </Button>
+          <Button
+            variant="destructive"
+            className="flex-1"
+            onClick={handleBulkDelete}
+            disabled={bulkDeleteMutation.isPending}
+          >
+            {bulkDeleteMutation.isPending ? "Deleting..." : `Delete ${selectedInterns.length} Interns`}
+          </Button>
+        </div>
+      </Modal>
     </div>
   );
 }
@@ -656,6 +720,10 @@ function NewOfferLetterModal({
     }
 
     try {
+      const startDate = parseDateString(formData.startDate);
+      const endDate = parseDateString(formData.endDate);
+      const issueDate = parseDateString(formData.issueDate);
+
       const internId = await createMutation.mutateAsync({
         name: formData.name,
         email: formData.email,
@@ -664,13 +732,13 @@ function NewOfferLetterModal({
         year: formData.year,
         domain: formData.domain.trim(),
         duration: formData.duration,
-        startDate: new Date(formData.startDate),
-        endDate: new Date(formData.endDate),
-        issueDate: new Date(formData.issueDate),
+        startDate,
+        endDate,
+        issueDate,
         paymentStatus: formData.paymentStatus,
       });
 
-      // Update with offer letter fields
+      // Update with offer letter fields in a single call
       const { updateIntern } = await import("@/services/internService");
       await updateIntern(internId, {
         mode: formData.mode,
@@ -681,15 +749,16 @@ function NewOfferLetterModal({
       toast.success("Intern added successfully");
 
       if (generateLetter) {
-        // Generate offer letter after creation
+        // Fetch the created intern to get the real internId from Firestore
+        const createdIntern = await getInternById(internId);
         const intern: Intern & { id: string } = {
           id: internId,
-          internId: "",
+          internId: createdIntern?.internId ?? "",
           ...formData,
           domain: formData.domain.trim(),
-          startDate: new Date(formData.startDate),
-          endDate: new Date(formData.endDate),
-          issueDate: new Date(formData.issueDate),
+          startDate,
+          endDate,
+          issueDate,
           createdAt: new Date(),
           updatedAt: new Date(),
         };
@@ -957,6 +1026,9 @@ function EditOfferLetterModal({
 
     setSaving(true);
     try {
+      const startDate = parseDateString(formData.startDate);
+      const endDate = parseDateString(formData.endDate);
+
       const { updateIntern } = await import("@/services/internService");
       await updateIntern(intern.id, {
         name: formData.name,
@@ -966,12 +1038,9 @@ function EditOfferLetterModal({
         year: formData.year,
         domain: formData.domain.trim(),
         duration: formData.duration as InternDuration,
-        startDate: new Date(formData.startDate),
-        endDate: new Date(formData.endDate),
+        startDate,
+        endDate,
         paymentStatus: formData.paymentStatus,
-      });
-
-      await updateIntern(intern.id, {
         mode: formData.mode,
         stipend: formData.stipend,
         projectTitle: formData.projectTitle,
@@ -984,8 +1053,8 @@ function EditOfferLetterModal({
           ...intern,
           ...formData,
           domain: formData.domain.trim(),
-          startDate: new Date(formData.startDate),
-          endDate: new Date(formData.endDate),
+          startDate,
+          endDate,
           issueDate: intern.issueDate,
         };
 
@@ -1248,8 +1317,8 @@ function BulkImportModal({
     setImporting(true);
 
     try {
-      const { createIntern, updateIntern } = await import("@/services/internService");
-      const { mapDurationString, parseDateString } = await import("@/services/certificateService");
+      const { createIntern, updateIntern, getInternById: fetchIntern } = await import("@/services/internService");
+      const { mapDurationString } = await import("@/services/certificateService");
 
       const createdInterns: Array<Intern & { id: string }> = [];
 
@@ -1282,9 +1351,10 @@ function BulkImportModal({
           projectTitle: row.projectTitle,
         } as Partial<Intern>);
 
+        const createdRecord = await fetchIntern(internId);
         createdInterns.push({
           id: internId,
-          internId: "",
+          internId: createdRecord?.internId ?? "",
           name: row.name,
           email: row.email,
           phone: row.phone,

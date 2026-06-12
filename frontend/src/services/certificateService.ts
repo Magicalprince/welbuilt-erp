@@ -428,42 +428,34 @@ export function mapDurationString(duration: string): string {
   return durationMap[normalized] || "1-Month";
 }
 
-// Parse date string to Date object
+// Parse date string to Date object — always returns a local-midnight Date (no timezone shift)
 export function parseDateString(dateStr: string): Date {
-  // Handle various date formats
-  // DD/MM/YYYY, DD-MM-YYYY, YYYY-MM-DD, etc.
-
   if (!dateStr) return new Date();
 
-  // Check if it's an Excel serial date (number)
+  // Excel serial date (number)
   const numValue = Number(dateStr);
   if (!isNaN(numValue) && numValue > 30000 && numValue < 100000) {
-    // Excel serial date
     const excelEpoch = new Date(1899, 11, 30);
-    return new Date(excelEpoch.getTime() + numValue * 86400000);
+    const d = new Date(excelEpoch.getTime() + numValue * 86400000);
+    // Return local midnight to avoid DST edge cases
+    return new Date(d.getFullYear(), d.getMonth(), d.getDate());
   }
 
-  // Try various formats
-  const formats = [
-    /^(\d{2})\/(\d{2})\/(\d{4})$/, // DD/MM/YYYY
-    /^(\d{2})-(\d{2})-(\d{4})$/, // DD-MM-YYYY
-    /^(\d{4})-(\d{2})-(\d{2})$/, // YYYY-MM-DD (ISO)
-  ];
-
-  for (const regex of formats) {
-    const match = dateStr.match(regex);
-    if (match) {
-      if (regex === formats[2]) {
-        // ISO format
-        return new Date(parseInt(match[1]), parseInt(match[2]) - 1, parseInt(match[3]));
-      } else {
-        // DD/MM/YYYY or DD-MM-YYYY
-        return new Date(parseInt(match[3]), parseInt(match[2]) - 1, parseInt(match[1]));
-      }
-    }
+  // DD/MM/YYYY or DD-MM-YYYY
+  const dmyMatch = dateStr.match(/^(\d{2})[\/\-](\d{2})[\/\-](\d{4})$/);
+  if (dmyMatch) {
+    return new Date(parseInt(dmyMatch[3]), parseInt(dmyMatch[2]) - 1, parseInt(dmyMatch[1]));
   }
 
-  // Fallback to Date.parse
+  // YYYY-MM-DD (HTML date input format — MUST use local constructor to avoid UTC shift)
+  const isoMatch = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (isoMatch) {
+    return new Date(parseInt(isoMatch[1]), parseInt(isoMatch[2]) - 1, parseInt(isoMatch[3]));
+  }
+
+  // Fallback: parse then convert back to local midnight
   const parsed = Date.parse(dateStr);
-  return isNaN(parsed) ? new Date() : new Date(parsed);
+  if (isNaN(parsed)) return new Date();
+  const d = new Date(parsed);
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate());
 }

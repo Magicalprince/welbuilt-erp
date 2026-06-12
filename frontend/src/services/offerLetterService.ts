@@ -211,33 +211,52 @@ export async function generateOfferLetterPdf(data: OfferLetterData): Promise<Uin
     color: black,
   });
 
-  // Educational nature paragraph
+  // Stipend / educational nature paragraph
   currentY -= 20;
-  page.drawText("This internship is purely educational in nature and does not include a stipend. Upon successful", {
-    x: leftMargin,
-    y: currentY,
-    size: fontSize,
-    font: regularFont,
-    color: black,
-  });
+  if (data.stipend > 0) {
+    page.drawText("Upon successful completion of the internship and all assigned deliverables, you will receive", {
+      x: leftMargin,
+      y: currentY,
+      size: fontSize,
+      font: regularFont,
+      color: black,
+    });
 
-  currentY -= lineHeight;
-  page.drawText("completion of the internship and all assigned deliverables, you will receive an Internship", {
-    x: leftMargin,
-    y: currentY,
-    size: fontSize,
-    font: regularFont,
-    color: black,
-  });
+    currentY -= lineHeight;
+    page.drawText("an Internship Completion Certificate from Welbuilt AI Solutions Pvt Ltd.", {
+      x: leftMargin,
+      y: currentY,
+      size: fontSize,
+      font: regularFont,
+      color: black,
+    });
+  } else {
+    page.drawText("This internship is purely educational in nature and does not include a stipend. Upon successful", {
+      x: leftMargin,
+      y: currentY,
+      size: fontSize,
+      font: regularFont,
+      color: black,
+    });
 
-  currentY -= lineHeight;
-  page.drawText("Completion Certificate from Welbuilt AI Solutions Pvt Ltd.", {
-    x: leftMargin,
-    y: currentY,
-    size: fontSize,
-    font: regularFont,
-    color: black,
-  });
+    currentY -= lineHeight;
+    page.drawText("completion of the internship and all assigned deliverables, you will receive an Internship", {
+      x: leftMargin,
+      y: currentY,
+      size: fontSize,
+      font: regularFont,
+      color: black,
+    });
+
+    currentY -= lineHeight;
+    page.drawText("Completion Certificate from Welbuilt AI Solutions Pvt Ltd.", {
+      x: leftMargin,
+      y: currentY,
+      size: fontSize,
+      font: regularFont,
+      color: black,
+    });
+  }
 
   // Closing
   currentY -= 24;
