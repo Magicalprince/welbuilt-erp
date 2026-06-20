@@ -52,6 +52,16 @@ export const toTimestamp = (date: Date | undefined): Timestamp | undefined => {
   return Timestamp.fromDate(date);
 };
 
+// Firestore rejects `undefined` field values outright — strip them before every write
+// so callers can pass `field: someValue || undefined` without crashing addDoc/updateDoc.
+function stripUndefined<T extends Record<string, unknown>>(data: T): Partial<T> {
+  const result: Partial<T> = {};
+  for (const key in data) {
+    if (data[key] !== undefined) result[key] = data[key];
+  }
+  return result;
+}
+
 // Generic CRUD operations
 export async function getDocument<T>(collectionName: string, docId: string): Promise<T | null> {
   const docRef = doc(db, collectionName, docId);
@@ -76,7 +86,7 @@ export async function createDocument<T extends DocumentData>(
   data: Omit<T, "id">
 ): Promise<string> {
   const docRef = await addDoc(collection(db, collectionName), {
-    ...data,
+    ...stripUndefined(data as Record<string, unknown>),
     createdAt: Timestamp.now(),
     updatedAt: Timestamp.now(),
   });
@@ -90,7 +100,7 @@ export async function updateDocument<T extends DocumentData>(
 ): Promise<void> {
   const docRef = doc(db, collectionName, docId);
   await updateDoc(docRef, {
-    ...data,
+    ...stripUndefined(data as Record<string, unknown>),
     updatedAt: Timestamp.now(),
   });
 }
