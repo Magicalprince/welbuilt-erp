@@ -1,14 +1,12 @@
 import { useState, useMemo } from "react";
 import { motion } from "framer-motion";
 import {
-  BarChart3,
   Download,
   TrendingUp,
   TrendingDown,
   Users,
   FileText,
   GraduationCap,
-  Calendar,
   IndianRupee,
 } from "lucide-react";
 import {

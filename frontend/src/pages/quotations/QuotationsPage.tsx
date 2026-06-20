@@ -1,13 +1,12 @@
 import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import {
   Plus,
   Search,
   Trash2,
   FileText,
   Loader2,
-  Calendar,
   ArrowRight,
   CheckCircle2,
   XCircle,
@@ -20,8 +19,6 @@ import {
   Button,
   Card,
   CardContent,
-  CardHeader,
-  CardTitle,
   Input,
   Label,
   Select,

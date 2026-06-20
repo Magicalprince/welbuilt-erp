@@ -11,7 +11,6 @@ import {
   Label,
   Select,
   Textarea,
-  Checkbox,
 } from "@/components/ui";
 import { useClients, useProjects, useCreateInvoice } from "@/hooks/useFirestore";
 import { formatCurrency } from "@/lib/utils";
