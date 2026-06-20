@@ -12,6 +12,8 @@ import {
   ChevronLeft,
   ChevronRight,
   GraduationCap,
+  ClipboardList,
+  BarChart3,
 } from "lucide-react";
 import { Button, LogoWithText, Logo } from "@/components/ui";
 
@@ -25,8 +27,10 @@ const navItems = [
   { path: "/projects", label: "Projects", icon: FolderKanban },
   { path: "/clients", label: "Clients", icon: Users },
   { path: "/finance", label: "Finance", icon: Wallet },
+  { path: "/quotations", label: "Quotations", icon: ClipboardList },
   { path: "/documents", label: "Documents", icon: FileText },
   { path: "/interns", label: "Interns", icon: GraduationCap },
+  { path: "/reports", label: "Reports", icon: BarChart3 },
   { path: "/notes", label: "Notes", icon: StickyNote },
   { path: "/settings", label: "Settings", icon: Settings },
 ];

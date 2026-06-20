@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   Search,
   Download,
@@ -13,6 +13,7 @@ import {
   RefreshCw,
   Users,
   UserCheck,
+  CheckSquare,
 } from "lucide-react";
 import {
   Button,
@@ -27,7 +28,7 @@ import {
   Checkbox,
 } from "@/components/ui";
 import { cn } from "@/lib/utils";
-import { useInterns, useDeleteIntern, internQueryKeys } from "@/hooks/useInterns";
+import { useInterns, useDeleteIntern, useBulkDeleteInterns, internQueryKeys } from "@/hooks/useInterns";
 import { useQueryClient } from "@tanstack/react-query";
 import type { Intern, InternPaymentStatus } from "@/types";
 import {
@@ -98,11 +99,33 @@ export default function PayslipTab() {
 
   // Loading
   const [generatingSlip, setGeneratingSlip] = useState<string | null>(null);
+  const [bulkDeleteConfirm, setBulkDeleteConfirm] = useState(false);
 
   // Data
   const queryClient = useQueryClient();
   const { data: interns, isLoading } = useInterns();
   const deleteMutation = useDeleteIntern();
+  const bulkDeleteMutation = useBulkDeleteInterns();
+
+  const handleBulkDelete = async () => {
+    const selected = filteredInterns.filter((i) => selectedInterns.includes(i.id));
+    try {
+      await Promise.allSettled(
+        selected
+          .filter((i) => i.payslipUrl)
+          .map((i) => {
+            const key = extractFileKeyFromUrl(i.payslipUrl!);
+            return key ? deleteFileFromR2(key) : Promise.resolve();
+          })
+      );
+      await bulkDeleteMutation.mutateAsync(selectedInterns);
+      toast.success(`Deleted ${selectedInterns.length} interns`);
+      setSelectedInterns([]);
+      setBulkDeleteConfirm(false);
+    } catch {
+      toast.error("Failed to delete selected interns");
+    }
+  };
 
   const domainOptions = useMemo(() => {
     const domains = interns ? [...new Set(interns.map(i => i.domain).filter(Boolean))].sort() : [];
@@ -303,6 +326,33 @@ export default function PayslipTab() {
             </motion.div>
           )}
 
+          {/* Bulk Action Bar */}
+          <AnimatePresence>
+            {selectedInterns.length > 0 && (
+              <motion.div
+                initial={{ opacity: 0, y: -12 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -12 }}
+                className="flex items-center justify-between p-3 bg-primary/10 border border-primary/20 rounded-lg"
+              >
+                <div className="flex items-center gap-2">
+                  <CheckSquare className="h-4 w-4 text-primary" />
+                  <span className="text-sm font-medium">{selectedInterns.length} selected</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button variant="ghost" size="sm" onClick={() => setSelectedInterns([])}>
+                    <X className="h-4 w-4 mr-1" />
+                    Clear
+                  </Button>
+                  <Button variant="destructive" size="sm" onClick={() => setBulkDeleteConfirm(true)}>
+                    <Trash2 className="h-4 w-4 mr-1" />
+                    Delete Selected
+                  </Button>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
           {/* Table */}
           {isLoading ? (
             <div className="space-y-2">
@@ -500,6 +550,27 @@ export default function PayslipTab() {
         <div className="flex justify-end gap-2">
           <Button variant="outline" onClick={() => setDeleteConfirm(null)}>Cancel</Button>
           <Button variant="destructive" onClick={handleDelete}>Delete</Button>
+        </div>
+      </Modal>
+
+      {/* Bulk Delete Confirm Modal */}
+      <Modal isOpen={bulkDeleteConfirm} onClose={() => setBulkDeleteConfirm(false)} title="Delete Selected Interns">
+        <p className="text-sm text-muted-foreground mb-4">
+          Are you sure you want to permanently delete <strong>{selectedInterns.length} intern{selectedInterns.length > 1 ? "s" : ""}</strong>? Their payslips will also be removed. This action cannot be undone.
+        </p>
+        <div className="flex justify-end gap-2">
+          <Button variant="outline" onClick={() => setBulkDeleteConfirm(false)}>Cancel</Button>
+          <Button
+            variant="destructive"
+            onClick={handleBulkDelete}
+            disabled={bulkDeleteMutation.isPending}
+          >
+            {bulkDeleteMutation.isPending ? (
+              <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Deleting...</>
+            ) : (
+              `Delete ${selectedInterns.length} Intern${selectedInterns.length > 1 ? "s" : ""}`
+            )}
+          </Button>
         </div>
       </Modal>
     </div>

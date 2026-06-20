@@ -13,9 +13,10 @@ import {
   Textarea,
   Checkbox,
 } from "@/components/ui";
-import { useClients, useProjects, useCreateInvoice, useUpdateInvoice } from "@/hooks/useFirestore";
+import { useClients, useProjects, useCreateInvoice } from "@/hooks/useFirestore";
 import { formatCurrency } from "@/lib/utils";
 import toast from "react-hot-toast";
+import type { GSTType } from "@/types";
 
 interface LineItem {
   id: string;
@@ -32,6 +33,20 @@ interface PaymentPhase {
   dueDate: string;
 }
 
+const GST_TYPE_OPTIONS = [
+  { value: "NONE", label: "No GST" },
+  { value: "CGST_SGST", label: "CGST + SGST (Intra-state)" },
+  { value: "IGST", label: "IGST (Inter-state)" },
+];
+
+const GST_RATE_OPTIONS = [
+  { value: "0", label: "0%" },
+  { value: "5", label: "5%" },
+  { value: "12", label: "12%" },
+  { value: "18", label: "18% (Standard)" },
+  { value: "28", label: "28%" },
+];
+
 export default function InvoiceFormPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -40,7 +55,6 @@ export default function InvoiceFormPage() {
   const { data: clients, isLoading: loadingClients } = useClients();
   const { data: allProjects } = useProjects();
   const createInvoiceMutation = useCreateInvoice();
-  const updateInvoiceMutation = useUpdateInvoice();
 
   // Form state
   const [clientId, setClientId] = useState(preselectedClientId);
@@ -51,7 +65,11 @@ export default function InvoiceFormPage() {
     date.setDate(date.getDate() + 30);
     return date.toISOString().split("T")[0];
   });
-  const [taxPercent, setTaxPercent] = useState(18);
+
+  // GST state
+  const [gstType, setGstType] = useState<GSTType>("CGST_SGST");
+  const [gstRate, setGstRate] = useState(18);
+
   const [discount, setDiscount] = useState(0);
   const [notes, setNotes] = useState("");
 
@@ -64,43 +82,40 @@ export default function InvoiceFormPage() {
   const [paymentPhases, setPaymentPhases] = useState<PaymentPhase[]>([]);
   const [usePaymentSchedule, setUsePaymentSchedule] = useState(false);
 
-  // Mark as paid option
-  const [markAsPaid, setMarkAsPaid] = useState(false);
-  const [paidPaymentMethod, setPaidPaymentMethod] = useState("bank");
+  // Filter projects by selected client
+  const clientProjects = useMemo(() => {
+    if (!allProjects || !clientId) return [];
+    return allProjects.filter((p) => p.clientId === clientId);
+  }, [allProjects, clientId]);
+
+  // Calculate totals with GST
+  const subtotal = lineItems.reduce((sum, item) => sum + item.amount, 0);
+
+  const cgstPercent = gstType === "CGST_SGST" ? gstRate / 2 : 0;
+  const sgstPercent = gstType === "CGST_SGST" ? gstRate / 2 : 0;
+  const igstPercent = gstType === "IGST" ? gstRate : 0;
+
+  const cgstAmount = gstType === "CGST_SGST" ? (subtotal * cgstPercent) / 100 : 0;
+  const sgstAmount = gstType === "CGST_SGST" ? (subtotal * sgstPercent) / 100 : 0;
+  const igstAmount = gstType === "IGST" ? (subtotal * igstPercent) / 100 : 0;
+  const taxAmount = cgstAmount + sgstAmount + igstAmount;
+  const total = subtotal + taxAmount - discount;
 
   // Generate default payment phases
   const generateDefaultPhases = (invoiceTotal: number, issueDt: string, dueDt: string): PaymentPhase[] => {
     const phase1Amount = Math.round(invoiceTotal * 0.3);
     const phase2Amount = Math.round(invoiceTotal * 0.4);
     const phase3Amount = invoiceTotal - phase1Amount - phase2Amount;
-
     const issueDateObj = new Date(issueDt);
     const dueDateObj = new Date(dueDt);
     const midDate = new Date((issueDateObj.getTime() + dueDateObj.getTime()) / 2);
-
     return [
-      {
-        id: crypto.randomUUID(),
-        description: "Advance Payment",
-        amount: phase1Amount,
-        dueDate: issueDt,
-      },
-      {
-        id: crypto.randomUUID(),
-        description: "Mid-Project Payment",
-        amount: phase2Amount,
-        dueDate: midDate.toISOString().split("T")[0],
-      },
-      {
-        id: crypto.randomUUID(),
-        description: "Final Payment",
-        amount: phase3Amount,
-        dueDate: dueDt,
-      },
+      { id: crypto.randomUUID(), description: "Advance Payment", amount: phase1Amount, dueDate: issueDt },
+      { id: crypto.randomUUID(), description: "Mid-Project Payment", amount: phase2Amount, dueDate: midDate.toISOString().split("T")[0] },
+      { id: crypto.randomUUID(), description: "Final Payment", amount: phase3Amount, dueDate: dueDt },
     ];
   };
 
-  // Handler for toggling payment schedule
   const handleTogglePaymentSchedule = (enabled: boolean) => {
     setUsePaymentSchedule(enabled);
     if (enabled && paymentPhases.length === 0) {
@@ -110,18 +125,6 @@ export default function InvoiceFormPage() {
     }
   };
 
-  // Filter projects by selected client
-  const clientProjects = useMemo(() => {
-    if (!allProjects || !clientId) return [];
-    return allProjects.filter((p) => p.clientId === clientId);
-  }, [allProjects, clientId]);
-
-  // Calculate totals
-  const subtotal = lineItems.reduce((sum, item) => sum + item.amount, 0);
-  const taxAmount = (subtotal * taxPercent) / 100;
-  const total = subtotal + taxAmount - discount;
-
-  // Update line item
   const updateLineItem = (id: string, field: keyof LineItem, value: string | number) => {
     setLineItems((items) =>
       items.map((item) => {
@@ -135,7 +138,6 @@ export default function InvoiceFormPage() {
     );
   };
 
-  // Add line item
   const addLineItem = () => {
     setLineItems((items) => [
       ...items,
@@ -143,20 +145,17 @@ export default function InvoiceFormPage() {
     ]);
   };
 
-  // Remove line item
   const removeLineItem = (id: string) => {
     if (lineItems.length === 1) return;
     setLineItems((items) => items.filter((item) => item.id !== id));
   };
 
-  // Update payment phase
   const updatePaymentPhase = (id: string, field: keyof PaymentPhase, value: string | number) => {
     setPaymentPhases((phases) =>
       phases.map((phase) => (phase.id === id ? { ...phase, [field]: value } : phase))
     );
   };
 
-  // Add payment phase
   const addPaymentPhase = () => {
     setPaymentPhases((phases) => [
       ...phases,
@@ -164,18 +163,15 @@ export default function InvoiceFormPage() {
     ]);
   };
 
-  // Remove payment phase
   const removePaymentPhase = (id: string) => {
     setPaymentPhases((phases) => phases.filter((phase) => phase.id !== id));
   };
 
-  // Validate form
   const hasValidLineItems = lineItems.every((item) => item.description && item.amount > 0);
   const scheduleTotal = paymentPhases.reduce((sum, p) => sum + Number(p.amount), 0);
   const hasValidSchedule = !usePaymentSchedule || Math.abs(scheduleTotal - total) <= 1;
   const isValid = !!clientId && hasValidLineItems && hasValidSchedule;
 
-  // Submit form
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!isValid) {
@@ -202,6 +198,17 @@ export default function InvoiceFormPage() {
         total,
         status: "PENDING" as const,
         notes: notes || undefined,
+        gstType,
+        ...(gstType === "CGST_SGST" && {
+          cgstPercent,
+          sgstPercent,
+          cgstAmount,
+          sgstAmount,
+        }),
+        ...(gstType === "IGST" && {
+          igstPercent,
+          igstAmount,
+        }),
       };
 
       const paymentSchedule = usePaymentSchedule
@@ -212,22 +219,8 @@ export default function InvoiceFormPage() {
           }))
         : [];
 
-      const invoiceId = await createInvoiceMutation.mutateAsync({ data: invoiceData, paymentSchedule });
-
-      // If marking as paid, update the invoice status immediately
-      if (markAsPaid) {
-        await updateInvoiceMutation.mutateAsync({
-          invoiceId,
-          data: {
-            status: "PAID",
-            paidAmount: total,
-          },
-        });
-        toast.success("Invoice created and marked as paid!");
-      } else {
-        toast.success("Invoice created successfully!");
-      }
-
+      await createInvoiceMutation.mutateAsync({ data: invoiceData, paymentSchedule });
+      toast.success("Invoice created successfully!");
       navigate("/finance/invoices");
     } catch (error) {
       console.error("Failed to create invoice:", error);
@@ -245,7 +238,6 @@ export default function InvoiceFormPage() {
 
   return (
     <div className="space-y-6 max-w-4xl mx-auto">
-      {/* Header */}
       <div className="flex items-center gap-4">
         <Button variant="ghost" size="icon" onClick={() => navigate(-1)}>
           <ArrowLeft className="h-5 w-5" />
@@ -271,18 +263,11 @@ export default function InvoiceFormPage() {
                 value={clientId}
                 onChange={(e) => {
                   setClientId(e.target.value);
-                  setProjectId(""); // Reset project when client changes
+                  setProjectId("");
                 }}
-                options={
-                  clients?.map((c) => ({ value: c.id, label: c.companyName })) || []
-                }
+                options={clients?.map((c) => ({ value: c.id, label: c.companyName })) || []}
                 placeholder="Select a client"
               />
-              {!clientId && (
-                <p className="text-xs text-muted-foreground">
-                  You must select a client to create an invoice
-                </p>
-              )}
             </div>
             <div className="space-y-2">
               <Label>Project (Optional)</Label>
@@ -293,11 +278,6 @@ export default function InvoiceFormPage() {
                 placeholder="Select a project"
                 disabled={!clientId}
               />
-              {clientId && clientProjects.length === 0 && (
-                <p className="text-xs text-muted-foreground">
-                  No projects found for this client
-                </p>
-              )}
             </div>
           </CardContent>
         </Card>
@@ -345,16 +325,14 @@ export default function InvoiceFormPage() {
             </Button>
           </CardHeader>
           <CardContent className="space-y-4">
-            {/* Header */}
             <div className="grid grid-cols-12 gap-2 text-sm font-medium text-muted-foreground">
               <div className="col-span-5">Description</div>
               <div className="col-span-2 text-center">Qty</div>
-              <div className="col-span-2 text-right">Rate</div>
-              <div className="col-span-2 text-right">Amount</div>
+              <div className="col-span-2 text-right">Rate (₹)</div>
+              <div className="col-span-2 text-right">Amount (₹)</div>
               <div className="col-span-1"></div>
             </div>
 
-            {/* Items */}
             {lineItems.map((item) => (
               <div key={item.id} className="grid grid-cols-12 gap-2 items-center">
                 <div className="col-span-5">
@@ -400,30 +378,56 @@ export default function InvoiceFormPage() {
               </div>
             ))}
 
-            {/* Totals */}
-            <div className="border-t pt-4 space-y-2">
+            {/* GST & Totals */}
+            <div className="border-t pt-4 space-y-3">
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Subtotal</span>
                 <span className="font-medium">{formatCurrency(subtotal)}</span>
               </div>
-              <div className="flex justify-between items-center gap-4">
-                <div className="flex items-center gap-2">
-                  <span className="text-muted-foreground">Tax</span>
-                  <Input
-                    type="number"
-                    min="0"
-                    max="100"
-                    value={taxPercent}
-                    onChange={(e) => setTaxPercent(Number(e.target.value))}
-                    className="w-20 h-8"
+
+              {/* GST Type Selection */}
+              <div className="flex items-center gap-4">
+                <span className="text-muted-foreground min-w-[80px]">GST Type</span>
+                <Select
+                  value={gstType}
+                  onChange={(e) => setGstType(e.target.value as GSTType)}
+                  options={GST_TYPE_OPTIONS}
+                  className="w-64"
+                />
+                {gstType !== "NONE" && (
+                  <Select
+                    value={gstRate.toString()}
+                    onChange={(e) => setGstRate(Number(e.target.value))}
+                    options={GST_RATE_OPTIONS}
+                    className="w-40"
                   />
-                  <span className="text-muted-foreground">%</span>
-                </div>
-                <span className="font-medium">{formatCurrency(taxAmount)}</span>
+                )}
               </div>
+
+              {/* GST Breakdown */}
+              {gstType === "CGST_SGST" && (
+                <>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">CGST ({cgstPercent}%)</span>
+                    <span>{formatCurrency(cgstAmount)}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">SGST ({sgstPercent}%)</span>
+                    <span>{formatCurrency(sgstAmount)}</span>
+                  </div>
+                </>
+              )}
+              {gstType === "IGST" && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">IGST ({igstPercent}%)</span>
+                  <span>{formatCurrency(igstAmount)}</span>
+                </div>
+              )}
+
+              {/* Discount */}
               <div className="flex justify-between items-center gap-4">
                 <div className="flex items-center gap-2">
-                  <span className="text-muted-foreground">Discount</span>
+                  <span className="text-muted-foreground">Discount (₹)</span>
                   <Input
                     type="number"
                     min="0"
@@ -432,8 +436,11 @@ export default function InvoiceFormPage() {
                     className="w-32 h-8"
                   />
                 </div>
-                <span className="font-medium text-green-600">-{formatCurrency(discount)}</span>
+                {discount > 0 && (
+                  <span className="font-medium text-green-600">-{formatCurrency(discount)}</span>
+                )}
               </div>
+
               <div className="flex justify-between text-lg border-t pt-2">
                 <span className="font-bold">Total</span>
                 <span className="font-bold">{formatCurrency(total)}</span>
@@ -510,26 +517,23 @@ export default function InvoiceFormPage() {
                 Add Phase
               </Button>
 
-              {/* Schedule Total Check */}
               {paymentPhases.length > 0 && (
                 <div className="p-3 rounded-lg bg-muted">
                   <div className="flex justify-between text-sm">
                     <span>Schedule Total:</span>
                     <span
                       className={
-                        Math.abs(paymentPhases.reduce((sum, p) => sum + Number(p.amount), 0) - total) <= 1
-                          ? "text-green-600"
-                          : "text-destructive"
+                        Math.abs(scheduleTotal - total) <= 1 ? "text-green-600" : "text-destructive"
                       }
                     >
-                      {formatCurrency(paymentPhases.reduce((sum, p) => sum + Number(p.amount), 0))}
+                      {formatCurrency(scheduleTotal)}
                     </span>
                   </div>
                   <div className="flex justify-between text-sm">
                     <span>Invoice Total:</span>
                     <span>{formatCurrency(total)}</span>
                   </div>
-                  {Math.abs(paymentPhases.reduce((sum, p) => sum + Number(p.amount), 0) - total) > 1 && (
+                  {Math.abs(scheduleTotal - total) > 1 && (
                     <p className="text-xs text-destructive mt-1">
                       Payment schedule must equal invoice total
                     </p>
@@ -547,48 +551,11 @@ export default function InvoiceFormPage() {
           </CardHeader>
           <CardContent>
             <Textarea
-              placeholder="Additional notes or terms..."
+              placeholder="Additional notes, terms, or payment instructions..."
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               rows={3}
             />
-          </CardContent>
-        </Card>
-
-        {/* Mark as Paid Option */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Payment Status</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center gap-3">
-              <Checkbox
-                id="markAsPaid"
-                checked={markAsPaid}
-                onChange={() => setMarkAsPaid(!markAsPaid)}
-              />
-              <label htmlFor="markAsPaid" className="cursor-pointer">
-                <span className="font-medium">Mark as already paid</span>
-                <p className="text-sm text-muted-foreground">
-                  Check this if payment has already been received for this invoice
-                </p>
-              </label>
-            </div>
-            {markAsPaid && (
-              <div className="ml-7 space-y-2">
-                <Label>Payment Method</Label>
-                <Select
-                  value={paidPaymentMethod}
-                  onChange={(e) => setPaidPaymentMethod(e.target.value)}
-                  options={[
-                    { value: "bank", label: "Bank Transfer" },
-                    { value: "upi", label: "UPI" },
-                    { value: "cash", label: "Cash" },
-                    { value: "cheque", label: "Cheque" },
-                  ]}
-                />
-              </div>
-            )}
           </CardContent>
         </Card>
 
@@ -597,14 +564,14 @@ export default function InvoiceFormPage() {
           <Button type="button" variant="outline" onClick={() => navigate(-1)}>
             Cancel
           </Button>
-          <Button type="submit" disabled={!isValid || createInvoiceMutation.isPending || updateInvoiceMutation.isPending}>
-            {(createInvoiceMutation.isPending || updateInvoiceMutation.isPending) ? (
+          <Button type="submit" disabled={!isValid || createInvoiceMutation.isPending}>
+            {createInvoiceMutation.isPending ? (
               <>
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                {markAsPaid ? "Creating & Marking Paid..." : "Creating..."}
+                Creating...
               </>
             ) : (
-              markAsPaid ? "Create & Mark as Paid" : "Create Invoice"
+              "Create Invoice"
             )}
           </Button>
         </div>

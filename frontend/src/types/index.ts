@@ -102,6 +102,8 @@ export interface InvoicePayment {
   createdAt: Date;
 }
 
+export type GSTType = "CGST_SGST" | "IGST" | "NONE";
+
 export interface Invoice {
   id: string;
   invoiceNumber: string;
@@ -120,6 +122,14 @@ export interface Invoice {
   status: InvoiceStatus;
   notes?: string;
   payments: InvoicePayment[];
+  // GST fields — optional for backward compat with existing invoices
+  gstType?: GSTType;
+  cgstPercent?: number;
+  sgstPercent?: number;
+  igstPercent?: number;
+  cgstAmount?: number;
+  sgstAmount?: number;
+  igstAmount?: number;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -345,6 +355,45 @@ export interface Intern {
   referenceNumber?: string;
   numberOfMonths?: number;
   paymentType?: 'MONTHLY' | 'ONE_TIME';
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+// Quotation Types
+export type QuotationStatus = "DRAFT" | "SENT" | "ACCEPTED" | "REJECTED" | "EXPIRED";
+
+export interface QuotationLineItem {
+  id: string;
+  description: string;
+  quantity: number;
+  rate: number;
+  amount: number;
+}
+
+export interface Quotation {
+  id: string;
+  quotationNumber: string;
+  clientId: string;
+  client?: Client;
+  projectId?: string;
+  issueDate: Date;
+  validUntil: Date;
+  lineItems: QuotationLineItem[];
+  subtotal: number;
+  tax: number;
+  discount: number;
+  total: number;
+  status: QuotationStatus;
+  notes?: string;
+  terms?: string;
+  gstType?: GSTType;
+  cgstPercent?: number;
+  sgstPercent?: number;
+  igstPercent?: number;
+  cgstAmount?: number;
+  sgstAmount?: number;
+  igstAmount?: number;
+  convertedToInvoiceId?: string;
   createdAt: Date;
   updatedAt: Date;
 }

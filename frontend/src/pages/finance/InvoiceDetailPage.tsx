@@ -194,7 +194,33 @@ export default function InvoiceDetailPage() {
                       </td>
                       <td className="py-3 text-right">{formatCurrency(invoice.subtotal)}</td>
                     </tr>
-                    {invoice.tax > 0 && (
+                    {/* GST breakdown */}
+                    {invoice.gstType === "CGST_SGST" && (
+                      <>
+                        <tr>
+                          <td colSpan={3} className="py-2 text-right text-sm text-muted-foreground">
+                            CGST ({invoice.cgstPercent}%)
+                          </td>
+                          <td className="py-2 text-right text-sm">{formatCurrency(invoice.cgstAmount || 0)}</td>
+                        </tr>
+                        <tr>
+                          <td colSpan={3} className="py-2 text-right text-sm text-muted-foreground">
+                            SGST ({invoice.sgstPercent}%)
+                          </td>
+                          <td className="py-2 text-right text-sm">{formatCurrency(invoice.sgstAmount || 0)}</td>
+                        </tr>
+                      </>
+                    )}
+                    {invoice.gstType === "IGST" && (
+                      <tr>
+                        <td colSpan={3} className="py-2 text-right text-sm text-muted-foreground">
+                          IGST ({invoice.igstPercent}%)
+                        </td>
+                        <td className="py-2 text-right text-sm">{formatCurrency(invoice.igstAmount || 0)}</td>
+                      </tr>
+                    )}
+                    {/* Legacy tax field for old invoices without GST breakdown */}
+                    {(!invoice.gstType || invoice.gstType === "NONE") && invoice.tax > 0 && (
                       <tr>
                         <td colSpan={3} className="py-3 text-right font-medium">
                           Tax
@@ -212,7 +238,7 @@ export default function InvoiceDetailPage() {
                         </td>
                       </tr>
                     )}
-                    <tr className="text-lg">
+                    <tr className="text-lg border-t">
                       <td colSpan={3} className="py-3 text-right font-bold">
                         Total
                       </td>
@@ -404,7 +430,7 @@ export default function InvoiceDetailPage() {
             )}
           </div>
           <p className="text-sm text-muted-foreground">
-            This will mark the entire invoice as fully paid. The revenue will be reflected in your financial summary.
+            This will mark the entire invoice as fully paid. To record this as revenue, add a corresponding entry in the Income screen.
           </p>
           <div className="space-y-2">
             <label className="text-sm font-medium">Payment Method</label>

@@ -34,6 +34,8 @@ import NotesPage from "@/pages/notes/NotesPage";
 import SettingsPage from "@/pages/settings/SettingsPage";
 import ActivityPage from "@/pages/activity/ActivityPage";
 import InternsPage from "@/pages/interns/InternsPage";
+import QuotationsPage from "@/pages/quotations/QuotationsPage";
+import ReportsPage from "@/pages/reports/ReportsPage";
 
 export const router = createBrowserRouter([
   // Auth Routes
@@ -145,6 +147,16 @@ export const router = createBrowserRouter([
       {
         path: "interns",
         element: <InternsPage />,
+      },
+      // Quotations
+      {
+        path: "quotations",
+        element: <QuotationsPage />,
+      },
+      // Reports
+      {
+        path: "reports",
+        element: <ReportsPage />,
       },
       // Settings
       {
