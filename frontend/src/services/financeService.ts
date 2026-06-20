@@ -98,40 +98,18 @@ export async function deleteExpense(expenseId: string): Promise<void> {
   await deleteDocument(COLLECTIONS.EXPENSES, expenseId);
 }
 
-// Get total revenue (from paid invoices + non-invoice income)
+// Get total revenue — tracked ONLY from manually-entered Income records.
+// Invoice paidAmount is informational (client payment status) and intentionally
+// excluded: revenue/equity must only move when someone logs it on the Income screen.
 export async function getTotalRevenue(): Promise<number> {
-  const { getDocuments } = await import("./firestore");
-
-  // Get revenue from paid invoices
-  const invoices = await getDocuments<{ paidAmount: number }>(
-    COLLECTIONS.INVOICES
-  );
-  const invoiceRevenue = invoices.reduce((sum, inv) => sum + (inv.paidAmount || 0), 0);
-
-  // Get revenue from non-invoice income (interns, advances, etc.)
   const { getTotalIncome } = await import("./incomeService");
-  const nonInvoiceIncome = await getTotalIncome();
-
-  return invoiceRevenue + nonInvoiceIncome;
+  return getTotalIncome();
 }
 
-// Get this month's revenue (from invoices + income)
+// Get this month's revenue — same rule, Income records only.
 export async function getThisMonthRevenue(): Promise<number> {
-  const now = new Date();
-  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-
-  // Invoice revenue this month
-  const invoices = await getDocuments<{ paidAmount: number; updatedAt: Timestamp }>(
-    COLLECTIONS.INVOICES,
-    where("updatedAt", ">=", Timestamp.fromDate(startOfMonth))
-  );
-  const invoiceRevenue = invoices.reduce((sum, inv) => sum + (inv.paidAmount || 0), 0);
-
-  // Non-invoice income this month
   const { getThisMonthTotalIncome } = await import("./incomeService");
-  const nonInvoiceIncome = await getThisMonthTotalIncome();
-
-  return invoiceRevenue + nonInvoiceIncome;
+  return getThisMonthTotalIncome();
 }
 
 // Get total expenses (all expenses including founder withdrawals)
