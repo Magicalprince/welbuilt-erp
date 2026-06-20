@@ -8,6 +8,7 @@ import {
   updateDocument,
   orderBy,
   where,
+  stripUndefined,
 } from "./firestore";
 import type { Project, ProjectPhase, ProjectMVP, ProjectStatus } from "@/types";
 
@@ -152,7 +153,7 @@ export async function createProject(
   // Create project document
   const projectRef = doc(collection(db, COLLECTIONS.PROJECTS));
   batch.set(projectRef, {
-    ...data,
+    ...stripUndefined(data as unknown as Record<string, unknown>),
     startDate: Timestamp.fromDate(data.startDate),
     endDate: data.endDate ? Timestamp.fromDate(data.endDate) : null,
     progress: 0,

@@ -54,7 +54,7 @@ export const toTimestamp = (date: Date | undefined): Timestamp | undefined => {
 
 // Firestore rejects `undefined` field values outright — strip them before every write
 // so callers can pass `field: someValue || undefined` without crashing addDoc/updateDoc.
-function stripUndefined<T extends Record<string, unknown>>(data: T): Partial<T> {
+export function stripUndefined<T extends Record<string, unknown>>(data: T): Partial<T> {
   const result: Partial<T> = {};
   for (const key in data) {
     if (data[key] !== undefined) result[key] = data[key];

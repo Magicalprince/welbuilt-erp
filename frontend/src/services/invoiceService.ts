@@ -7,6 +7,7 @@ import {
   updateDocument,
   orderBy,
   where,
+  stripUndefined,
 } from "./firestore";
 import type { Invoice, InvoiceLineItem, InvoicePayment, InvoiceStatus } from "@/types";
 
@@ -166,7 +167,7 @@ export async function createInvoice(
   // Create invoice document
   const invoiceRef = doc(collection(db, COLLECTIONS.INVOICES));
   batch.set(invoiceRef, {
-    ...data,
+    ...stripUndefined(data as unknown as Record<string, unknown>),
     invoiceNumber,
     issueDate: Timestamp.fromDate(data.issueDate),
     dueDate: Timestamp.fromDate(data.dueDate),
@@ -179,14 +180,14 @@ export async function createInvoice(
   // Create payment schedule entries
   paymentSchedule.forEach((payment) => {
     const paymentRef = doc(collection(db, COLLECTIONS.INVOICE_PAYMENTS));
-    batch.set(paymentRef, {
+    batch.set(paymentRef, stripUndefined({
       invoiceId: invoiceRef.id,
       description: payment.description,
       amount: payment.amount,
       dueDate: Timestamp.fromDate(payment.dueDate),
       status: "PENDING",
       createdAt: Timestamp.now(),
-    });
+    }));
   });
 
   await batch.commit();
@@ -283,14 +284,14 @@ export async function addPaymentToSchedule(
   const paymentRef = doc(collection(db, COLLECTIONS.INVOICE_PAYMENTS));
   const batch = writeBatch(db);
 
-  batch.set(paymentRef, {
+  batch.set(paymentRef, stripUndefined({
     invoiceId,
     description: data.description,
     amount: data.amount,
     dueDate: Timestamp.fromDate(data.dueDate),
     status: "PENDING",
     createdAt: Timestamp.now(),
-  });
+  }));
 
   await batch.commit();
   return paymentRef.id;
