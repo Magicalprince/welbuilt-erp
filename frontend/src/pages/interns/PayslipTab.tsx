@@ -535,7 +535,7 @@ export default function PayslipTab() {
           setGeneratingSlip={setGeneratingSlip}
           onGenerated={(internId, internName, month) => {
             if (currentUser?.id) {
-              logPayslipGenerated(currentUser.id, internId, internName, month).catch(() => {});
+              logPayslipGenerated(currentUser.id, internId, internName, month, currentUser.name).catch(() => {});
             }
           }}
         />

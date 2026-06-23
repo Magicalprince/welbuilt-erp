@@ -142,7 +142,7 @@ export default function OfferLettersTab() {
       await generateAndUploadOfferLetter(intern);
       toast.success(`Offer letter generated for ${intern.name}`);
       if (currentUser?.id) {
-        logOfferLetterGenerated(currentUser.id, intern.id, intern.name).catch(() => {});
+        logOfferLetterGenerated(currentUser.id, intern.id, intern.name, currentUser.name).catch(() => {});
       }
       refreshInterns();
     } catch (error) {
@@ -160,7 +160,7 @@ export default function OfferLettersTab() {
       await generateAndUploadOfferLetter(intern);
       toast.success(`Offer letter regenerated for ${intern.name}`);
       if (currentUser?.id) {
-        logOfferLetterGenerated(currentUser.id, intern.id, intern.name).catch(() => {});
+        logOfferLetterGenerated(currentUser.id, intern.id, intern.name, currentUser.name).catch(() => {});
       }
       refreshInterns();
     } catch (error) {

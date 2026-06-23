@@ -360,11 +360,14 @@ export async function logNotePinned(
 
 // Intern activity logging — these create an immutable audit trail
 // The log survives even if the intern record is deleted afterward
+// userName is stored in metadata so the audit table can show a readable name
+// even after the user account is deactivated
 
 export async function logInternCreated(
   userId: string,
   internId: string,
-  internName: string
+  internName: string,
+  userName?: string
 ): Promise<string> {
   return logActivity({
     userId,
@@ -373,13 +376,15 @@ export async function logInternCreated(
     entityId: internId,
     entityName: internName,
     details: `Added intern "${internName}"`,
+    metadata: userName ? { userName } : undefined,
   });
 }
 
 export async function logInternDeleted(
   userId: string,
   internId: string,
-  internName: string
+  internName: string,
+  userName?: string
 ): Promise<string> {
   return logActivity({
     userId,
@@ -388,13 +393,15 @@ export async function logInternDeleted(
     entityId: internId,
     entityName: internName,
     details: `Deleted intern "${internName}"`,
+    metadata: userName ? { userName } : undefined,
   });
 }
 
 export async function logCertificateGenerated(
   userId: string,
   internId: string,
-  internName: string
+  internName: string,
+  userName?: string
 ): Promise<string> {
   return logActivity({
     userId,
@@ -403,13 +410,15 @@ export async function logCertificateGenerated(
     entityId: internId,
     entityName: internName,
     details: `Generated completion certificate for "${internName}"`,
+    metadata: userName ? { userName } : undefined,
   });
 }
 
 export async function logOfferLetterGenerated(
   userId: string,
   internId: string,
-  internName: string
+  internName: string,
+  userName?: string
 ): Promise<string> {
   return logActivity({
     userId,
@@ -418,6 +427,7 @@ export async function logOfferLetterGenerated(
     entityId: internId,
     entityName: internName,
     details: `Generated offer letter for "${internName}"`,
+    metadata: userName ? { userName } : undefined,
   });
 }
 
@@ -425,7 +435,8 @@ export async function logPayslipGenerated(
   userId: string,
   internId: string,
   internName: string,
-  month?: string
+  month?: string,
+  userName?: string
 ): Promise<string> {
   return logActivity({
     userId,
@@ -436,7 +447,7 @@ export async function logPayslipGenerated(
     details: month
       ? `Generated payslip for "${internName}" (${month})`
       : `Generated payslip for "${internName}"`,
-    metadata: month ? { month } : undefined,
+    metadata: { ...(month ? { month } : {}), ...(userName ? { userName } : {}) },
   });
 }
 
@@ -444,7 +455,8 @@ export async function logAttendanceGenerated(
   userId: string,
   internId: string,
   internName: string,
-  month?: string
+  month?: string,
+  userName?: string
 ): Promise<string> {
   return logActivity({
     userId,
@@ -455,7 +467,7 @@ export async function logAttendanceGenerated(
     details: month
       ? `Generated attendance report for "${internName}" (${month})`
       : `Generated attendance report for "${internName}"`,
-    metadata: month ? { month } : undefined,
+    metadata: { ...(month ? { month } : {}), ...(userName ? { userName } : {}) },
   });
 }
 

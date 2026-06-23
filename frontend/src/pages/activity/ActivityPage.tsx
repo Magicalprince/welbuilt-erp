@@ -379,8 +379,10 @@ export default function ActivityPage() {
                             <p className="font-medium">{log.entityName}</p>
                             <p className="text-xs text-muted-foreground font-mono">{log.entityId.slice(0, 8)}…</p>
                           </td>
-                          <td className="p-3 text-xs text-muted-foreground font-mono">
-                            {log.userId.slice(0, 8)}…
+                          <td className="p-3 text-xs text-muted-foreground">
+                            {(log.metadata?.userName as string) || (
+                              <span className="font-mono">{log.userId.slice(0, 8)}…</span>
+                            )}
                           </td>
                           <td className="p-3 text-xs text-muted-foreground max-w-[240px] truncate" title={log.details}>
                             {log.details || "—"}

@@ -62,7 +62,7 @@ export function useCreateIntern() {
     onSuccess: (internId, variables) => {
       queryClient.invalidateQueries({ queryKey: internQueryKeys.all });
       if (user?.id) {
-        logInternCreated(user.id, internId, variables.name).catch(() => {});
+        logInternCreated(user.id, internId, variables.name, user.name).catch(() => {});
       }
     },
   });
@@ -92,7 +92,7 @@ export function useDeleteIntern() {
     onSuccess: (_, { id, name }) => {
       queryClient.invalidateQueries({ queryKey: internQueryKeys.all });
       if (user?.id) {
-        logInternDeleted(user.id, id, name).catch(() => {});
+        logInternDeleted(user.id, id, name, user.name).catch(() => {});
       }
     },
   });
@@ -110,7 +110,7 @@ export function useBulkDeleteInterns() {
       queryClient.invalidateQueries({ queryKey: internQueryKeys.all });
       if (user?.id) {
         interns.forEach(({ id, name }) => {
-          logInternDeleted(user.id!, id, name).catch(() => {});
+          logInternDeleted(user.id!, id, name, user.name).catch(() => {});
         });
       }
     },

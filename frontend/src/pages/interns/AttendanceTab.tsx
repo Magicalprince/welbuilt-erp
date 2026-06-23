@@ -522,7 +522,7 @@ export default function AttendanceTab() {
           setGeneratingReport={setGeneratingReport}
           onGenerated={(internId, internName) => {
             if (currentUser?.id) {
-              logAttendanceGenerated(currentUser.id, internId, internName).catch(() => {});
+              logAttendanceGenerated(currentUser.id, internId, internName, undefined, currentUser.name).catch(() => {});
             }
           }}
         />

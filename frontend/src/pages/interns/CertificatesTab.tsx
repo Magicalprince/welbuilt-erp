@@ -136,7 +136,7 @@ export default function CertificatesTab() {
       await generateAndUploadCertificate(intern);
       toast.success(`Certificate generated for ${intern.name}`);
       if (currentUser?.id) {
-        logCertificateGenerated(currentUser.id, intern.id, intern.name).catch(() => {});
+        logCertificateGenerated(currentUser.id, intern.id, intern.name, currentUser.name).catch(() => {});
       }
       // Refresh to show the View button
       refreshInterns();
@@ -155,7 +155,7 @@ export default function CertificatesTab() {
       await generateAndUploadCertificate(intern);
       toast.success(`Certificate regenerated for ${intern.name}`);
       if (currentUser?.id) {
-        logCertificateGenerated(currentUser.id, intern.id, intern.name).catch(() => {});
+        logCertificateGenerated(currentUser.id, intern.id, intern.name, currentUser.name).catch(() => {});
       }
       refreshInterns();
     } catch (error) {

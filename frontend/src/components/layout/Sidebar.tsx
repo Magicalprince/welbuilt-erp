@@ -14,6 +14,7 @@ import {
   GraduationCap,
   ClipboardList,
   BarChart3,
+  Clock,
 } from "lucide-react";
 import { Button, LogoWithText, Logo } from "@/components/ui";
 import { useAuthStore } from "@/store/authStore";
@@ -33,6 +34,7 @@ const allNavItems = [
   { path: "/interns", label: "Interns", icon: GraduationCap },
   { path: "/reports", label: "Reports", icon: BarChart3 },
   { path: "/notes", label: "Notes", icon: StickyNote },
+  { path: "/activity", label: "Audit Log", icon: Clock },
   { path: "/settings", label: "Settings", icon: Settings },
 ];
 
