@@ -16,13 +16,14 @@ import {
   BarChart3,
 } from "lucide-react";
 import { Button, LogoWithText, Logo } from "@/components/ui";
+import { useAuthStore } from "@/store/authStore";
 
 interface SidebarProps {
   isCollapsed: boolean;
   onToggle: () => void;
 }
 
-const navItems = [
+const allNavItems = [
   { path: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { path: "/projects", label: "Projects", icon: FolderKanban },
   { path: "/clients", label: "Clients", icon: Users },
@@ -35,8 +36,14 @@ const navItems = [
   { path: "/settings", label: "Settings", icon: Settings },
 ];
 
+const internManagerNavItems = [
+  { path: "/interns", label: "Interns", icon: GraduationCap },
+];
+
 export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
   const location = useLocation();
+  const user = useAuthStore((s) => s.user);
+  const navItems = user?.role === "INTERN_MANAGER" ? internManagerNavItems : allNavItems;
 
   return (
     <motion.aside

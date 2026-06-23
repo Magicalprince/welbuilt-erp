@@ -39,6 +39,8 @@ import {
 import type { EmployeeAttendanceData } from "@/services/attendanceService";
 import { updateIntern } from "@/services/internService";
 import { deleteFileFromR2, extractFileKeyFromUrl, getSignedDownloadUrl } from "@/services/r2Service";
+import { logAttendanceGenerated } from "@/services/activityLogService";
+import { useAuthStore } from "@/store/authStore";
 import toast from "react-hot-toast";
 
 // domainOptions built dynamically from data inside the component
@@ -84,6 +86,7 @@ export default function AttendanceTab() {
   const { data: interns, isLoading } = useInterns();
   const deleteMutation = useDeleteIntern();
   const bulkDeleteMutation = useBulkDeleteInterns();
+  const currentUser = useAuthStore((s) => s.user);
 
   const handleBulkDelete = async () => {
     const selected = filteredInterns.filter((i) => selectedInterns.includes(i.id));
@@ -96,7 +99,8 @@ export default function AttendanceTab() {
             return key ? deleteFileFromR2(key) : Promise.resolve();
           })
       );
-      await bulkDeleteMutation.mutateAsync(selectedInterns);
+      const internsInfo = selected.map((i) => ({ id: i.id, name: i.name }));
+      await bulkDeleteMutation.mutateAsync({ ids: selectedInterns, interns: internsInfo });
       toast.success(`Deleted ${selectedInterns.length} interns`);
       setSelectedInterns([]);
       setBulkDeleteConfirm(false);
@@ -179,7 +183,7 @@ export default function AttendanceTab() {
         const fileKey = extractFileKeyFromUrl(deleteConfirm.attendanceUrl);
         if (fileKey) await deleteFileFromR2(fileKey).catch(console.error);
       }
-      await deleteMutation.mutateAsync(deleteConfirm.id);
+      await deleteMutation.mutateAsync({ id: deleteConfirm.id, name: deleteConfirm.name });
       toast.success("Intern deleted");
       setDeleteConfirm(null);
     } catch {
@@ -516,6 +520,11 @@ export default function AttendanceTab() {
           intern={generateIntern}
           onSuccess={refreshInterns}
           setGeneratingReport={setGeneratingReport}
+          onGenerated={(internId, internName) => {
+            if (currentUser?.id) {
+              logAttendanceGenerated(currentUser.id, internId, internName).catch(() => {});
+            }
+          }}
         />
       )}
 
@@ -573,12 +582,14 @@ function GenerateAttendanceModal({
   intern,
   onSuccess,
   setGeneratingReport,
+  onGenerated,
 }: {
   isOpen: boolean;
   onClose: () => void;
   intern: Intern;
   onSuccess: () => void;
   setGeneratingReport: (id: string | null) => void;
+  onGenerated?: (internId: string, internName: string) => void;
 }) {
   const [totalDays, setTotalDays] = useState(intern.totalInternshipDays?.toString() || "");
   const [daysPresent, setDaysPresent] = useState(intern.daysPresent?.toString() || "");
@@ -611,6 +622,7 @@ function GenerateAttendanceModal({
       );
 
       toast.success(`Attendance report generated for ${intern.name}`);
+      onGenerated?.(intern.id, intern.name);
       onSuccess();
       onClose();
     } catch (error) {

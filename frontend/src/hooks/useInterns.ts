@@ -8,6 +8,11 @@ import {
   deleteIntern,
   bulkDeleteInterns,
 } from "@/services/internService";
+import {
+  logInternCreated,
+  logInternDeleted,
+} from "@/services/activityLogService";
+import { useAuthStore } from "@/store/authStore";
 
 // Query keys
 export const internQueryKeys = {
@@ -38,6 +43,7 @@ export function useIntern(id: string) {
 // Create intern
 export function useCreateIntern() {
   const queryClient = useQueryClient();
+  const user = useAuthStore((s) => s.user);
 
   return useMutation({
     mutationFn: (data: {
@@ -53,8 +59,11 @@ export function useCreateIntern() {
       issueDate: Date;
       paymentStatus: InternPaymentStatus;
     }) => createIntern(data),
-    onSuccess: () => {
+    onSuccess: (internId, variables) => {
       queryClient.invalidateQueries({ queryKey: internQueryKeys.all });
+      if (user?.id) {
+        logInternCreated(user.id, internId, variables.name).catch(() => {});
+      }
     },
   });
 }
@@ -76,11 +85,15 @@ export function useUpdateIntern() {
 // Delete intern
 export function useDeleteIntern() {
   const queryClient = useQueryClient();
+  const user = useAuthStore((s) => s.user);
 
   return useMutation({
-    mutationFn: (id: string) => deleteIntern(id),
-    onSuccess: () => {
+    mutationFn: ({ id }: { id: string; name: string }) => deleteIntern(id),
+    onSuccess: (_, { id, name }) => {
       queryClient.invalidateQueries({ queryKey: internQueryKeys.all });
+      if (user?.id) {
+        logInternDeleted(user.id, id, name).catch(() => {});
+      }
     },
   });
 }
@@ -88,11 +101,18 @@ export function useDeleteIntern() {
 // Bulk delete interns
 export function useBulkDeleteInterns() {
   const queryClient = useQueryClient();
+  const user = useAuthStore((s) => s.user);
 
   return useMutation({
-    mutationFn: (ids: string[]) => bulkDeleteInterns(ids),
-    onSuccess: () => {
+    mutationFn: ({ ids }: { ids: string[]; interns: { id: string; name: string }[] }) =>
+      bulkDeleteInterns(ids),
+    onSuccess: (_, { interns }) => {
       queryClient.invalidateQueries({ queryKey: internQueryKeys.all });
+      if (user?.id) {
+        interns.forEach(({ id, name }) => {
+          logInternDeleted(user.id!, id, name).catch(() => {});
+        });
+      }
     },
   });
 }

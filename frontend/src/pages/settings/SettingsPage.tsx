@@ -1,14 +1,17 @@
 import { useState, useMemo } from "react";
-import { User, Lock, Building2, Palette } from "lucide-react";
-import { Button, Card, CardContent, CardHeader, CardTitle, Input, Label, Avatar, Tabs, TabsList, TabsTrigger, TabsContent, Skeleton } from "@/components/ui";
+import { User, Lock, Building2, Palette, Users, Plus, Trash2, RefreshCw } from "lucide-react";
+import { Button, Card, CardContent, CardHeader, CardTitle, Input, Label, Avatar, Tabs, TabsList, TabsTrigger, TabsContent, Skeleton, Modal, Badge } from "@/components/ui";
 import { useAuthStore } from "@/store/authStore";
 import { useThemeStore } from "@/store/themeStore";
 import { useSettings, useFounders, useUpdateSettings, useUpdateUserProfile } from "@/hooks/useFirestore";
+import { getAllInternManagers, createInternManager, sendInternManagerPasswordReset, deleteInternManagerAccount } from "@/services/userService";
+import { useQuery } from "@tanstack/react-query";
 import toast from "react-hot-toast";
 
 export default function SettingsPage() {
   const { user } = useAuthStore();
   const { theme, setTheme } = useThemeStore();
+  const isFounder = user?.role === "FOUNDER";
 
   const { data: settings, isLoading: loadingSettings } = useSettings();
   const { data: founders, isLoading: loadingFounders } = useFounders();
@@ -113,6 +116,12 @@ export default function SettingsPage() {
             <Palette className="h-4 w-4 mr-2" />
             Appearance
           </TabsTrigger>
+          {isFounder && (
+            <TabsTrigger value="users">
+              <Users className="h-4 w-4 mr-2" />
+              Manage Users
+            </TabsTrigger>
+          )}
         </TabsList>
 
         <TabsContent value="profile">
@@ -337,7 +346,174 @@ export default function SettingsPage() {
           </Card>
         </TabsContent>
 
+        {isFounder && (
+          <TabsContent value="users">
+            <ManageUsersTab />
+          </TabsContent>
+        )}
         </Tabs>
     </div>
+  );
+}
+
+function ManageUsersTab() {
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [newEmail, setNewEmail] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [creating, setCreating] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; name: string } | null>(null);
+
+  const { data: managers, isLoading, refetch } = useQuery({
+    queryKey: ["intern-managers"],
+    queryFn: getAllInternManagers,
+  });
+
+  const handleCreate = async () => {
+    if (!newName.trim() || !newEmail.trim() || newPassword.length < 8) {
+      toast.error("Fill all fields. Password must be at least 8 characters.");
+      return;
+    }
+    setCreating(true);
+    try {
+      await createInternManager(newName.trim(), newEmail.trim(), newPassword);
+      toast.success(`Intern Manager account created for ${newName}`);
+      setNewName("");
+      setNewEmail("");
+      setNewPassword("");
+      setIsCreateOpen(false);
+      refetch();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to create account";
+      toast.error(msg);
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const handleResetPassword = async (email: string) => {
+    try {
+      await sendInternManagerPasswordReset(email);
+      toast.success(`Password reset email sent to ${email}`);
+    } catch {
+      toast.error("Failed to send password reset");
+    }
+  };
+
+  const handleDeactivate = async () => {
+    if (!deleteConfirm) return;
+    try {
+      await deleteInternManagerAccount(deleteConfirm.id);
+      toast.success(`Account deactivated for ${deleteConfirm.name}`);
+      setDeleteConfirm(null);
+      refetch();
+    } catch {
+      toast.error("Failed to deactivate account");
+    }
+  };
+
+  return (
+    <>
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <div>
+            <CardTitle>Intern Manager Accounts</CardTitle>
+            <p className="text-sm text-muted-foreground mt-1">
+              Create and manage accounts for staff who handle intern onboarding. They can only access the Interns module.
+            </p>
+          </div>
+          <Button onClick={() => setIsCreateOpen(true)}>
+            <Plus className="h-4 w-4 mr-2" />
+            Add Intern Manager
+          </Button>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <div className="space-y-3">
+              {[...Array(2)].map((_, i) => <Skeleton key={i} className="h-16" />)}
+            </div>
+          ) : !managers?.length ? (
+            <div className="text-center py-8">
+              <Users className="h-10 w-10 mx-auto text-muted-foreground mb-3" />
+              <p className="text-muted-foreground">No intern managers yet</p>
+              <p className="text-sm text-muted-foreground">Create accounts for staff who manage intern onboarding</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {managers.map((manager) => (
+                <div key={manager.id} className="flex items-center justify-between p-4 rounded-lg bg-muted hover:bg-accent transition-colors">
+                  <div className="flex items-center gap-3">
+                    <Avatar name={manager.name} size="md" showRing={false} />
+                    <div>
+                      <p className="font-medium">{manager.name}</p>
+                      <p className="text-sm text-muted-foreground">{manager.email}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Badge variant="secondary" className="text-xs">Intern Manager</Badge>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      title="Send password reset email"
+                      onClick={() => handleResetPassword(manager.email)}
+                    >
+                      <RefreshCw className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-destructive hover:text-destructive"
+                      title="Deactivate account"
+                      onClick={() => setDeleteConfirm({ id: manager.id, name: manager.name })}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Create Modal */}
+      <Modal isOpen={isCreateOpen} onClose={() => setIsCreateOpen(false)} title="Create Intern Manager">
+        <div className="space-y-4">
+          <div>
+            <Label>Full Name *</Label>
+            <Input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Staff member name" />
+          </div>
+          <div>
+            <Label>Email *</Label>
+            <Input type="email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} placeholder="staff@company.com" />
+          </div>
+          <div>
+            <Label>Initial Password * (min 8 chars)</Label>
+            <Input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="Set a temporary password" />
+          </div>
+          <p className="text-xs text-muted-foreground">
+            The account will have access only to the Interns module. You can send a password reset email after creation.
+          </p>
+          <div className="flex gap-3 pt-2">
+            <Button variant="outline" className="flex-1" onClick={() => setIsCreateOpen(false)}>Cancel</Button>
+            <Button className="flex-1" onClick={handleCreate} disabled={creating}>
+              {creating ? "Creating..." : "Create Account"}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Deactivate Confirm */}
+      <Modal isOpen={!!deleteConfirm} onClose={() => setDeleteConfirm(null)} title="Deactivate Account">
+        <p>Are you sure you want to deactivate <strong>{deleteConfirm?.name}</strong>'s account?</p>
+        <p className="text-sm text-muted-foreground mt-2">
+          They will no longer be able to log in. All their activity logs are preserved.
+        </p>
+        <div className="flex gap-3 mt-4">
+          <Button variant="outline" className="flex-1" onClick={() => setDeleteConfirm(null)}>Cancel</Button>
+          <Button variant="destructive" className="flex-1" onClick={handleDeactivate}>Deactivate</Button>
+        </div>
+      </Modal>
+    </>
   );
 }

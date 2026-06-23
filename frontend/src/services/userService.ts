@@ -1,12 +1,17 @@
 import { doc, setDoc, Timestamp } from "firebase/firestore";
-import { db } from "@/config/firebase";
+import {
+  createUserWithEmailAndPassword,
+  sendPasswordResetEmail as firebaseSendPasswordResetEmail,
+} from "firebase/auth";
+import { db, secondaryAuth } from "@/config/firebase";
 import {
   COLLECTIONS,
   getDocument,
   getDocuments,
   updateDocument,
+  where,
 } from "./firestore";
-import type { User } from "@/types";
+import type { User, UserRole } from "@/types";
 
 export interface FirestoreUser {
   id: string;
@@ -15,7 +20,7 @@ export interface FirestoreUser {
   phone?: string;
   avatar?: string;
   equityPercent: number;
-  role: "FOUNDER";
+  role: UserRole;
   isPlaceholder?: boolean;
   createdAt: Timestamp;
   updatedAt: Timestamp;
@@ -41,7 +46,7 @@ export async function getAllFounders(): Promise<User[]> {
     const uniqueFounders = new Map<string, FirestoreUser>();
 
     for (const user of users) {
-      if (user.role !== "FOUNDER" && !user.equityPercent) continue;
+      if (user.role !== "FOUNDER") continue;
 
       // Skip placeholder entries if real user exists
       const isPlaceholder = user.id?.startsWith("placeholder_") || user.isPlaceholder === true;
@@ -154,4 +159,57 @@ export async function getFounderFinances(): Promise<{
     console.error("Error in getFounderFinances:", error);
     return [];
   }
+}
+
+// Get all intern managers
+export async function getAllInternManagers(): Promise<User[]> {
+  try {
+    const users = await getDocuments<FirestoreUser>(
+      COLLECTIONS.USERS,
+      where("role", "==", "INTERN_MANAGER")
+    );
+    return users.map((u) => ({
+      ...u,
+      createdAt: u.createdAt?.toDate?.() || new Date(),
+      updatedAt: u.updatedAt?.toDate?.() || new Date(),
+    }));
+  } catch (error) {
+    console.error("Error fetching intern managers:", error);
+    return [];
+  }
+}
+
+// Create an intern manager account (founders only)
+// Uses a secondary Firebase Auth app so the founder's session is not affected
+export async function createInternManager(
+  name: string,
+  email: string,
+  password: string
+): Promise<string> {
+  const credential = await createUserWithEmailAndPassword(secondaryAuth, email, password);
+  const uid = credential.user.uid;
+  // Sign out from secondary app immediately so it doesn't hold a session
+  await secondaryAuth.signOut();
+
+  const userRef = doc(db, COLLECTIONS.USERS, uid);
+  await setDoc(userRef, {
+    name,
+    email,
+    equityPercent: 0,
+    role: "INTERN_MANAGER" as UserRole,
+    createdAt: Timestamp.now(),
+    updatedAt: Timestamp.now(),
+  });
+
+  return uid;
+}
+
+// Send password reset to an intern manager
+export async function sendInternManagerPasswordReset(email: string): Promise<void> {
+  await firebaseSendPasswordResetEmail(secondaryAuth, email);
+}
+
+// Deactivate intern manager (soft-delete by marking role)
+export async function deleteInternManagerAccount(userId: string): Promise<void> {
+  await updateDocument(COLLECTIONS.USERS, userId, { role: "DEACTIVATED" as UserRole });
 }

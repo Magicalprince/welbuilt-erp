@@ -1121,6 +1121,16 @@ export function useActivityLogsByUser(userId: string) {
   });
 }
 
+export function useInternActivityLogs() {
+  return useQuery({
+    queryKey: [...queryKeys.activityLogs, "interns"],
+    queryFn: async () => {
+      const { getInternActivityLogs } = await import("@/services/activityLogService");
+      return getInternActivityLogs();
+    },
+  });
+}
+
 // ============================================
 // Settings Hooks
 // ============================================

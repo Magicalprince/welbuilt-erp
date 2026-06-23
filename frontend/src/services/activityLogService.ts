@@ -7,13 +7,13 @@ import {
   where,
   limit as firestoreLimit,
 } from "./firestore";
-import type { ActivityLog, ActivityAction } from "@/types";
+import type { ActivityLog, ActivityAction, ActivityEntityType } from "@/types";
 
 export interface FirestoreActivityLog {
   id: string;
   userId: string;
   action: ActivityAction;
-  entityType: "PROJECT" | "CLIENT" | "INVOICE" | "EXPENSE" | "INCOME" | "DOCUMENT" | "NOTE" | "WITHDRAWAL" | "USER";
+  entityType: ActivityEntityType;
   entityId: string;
   entityName: string;
   details?: string;
@@ -60,7 +60,7 @@ export async function getActivityLogsByUser(userId: string): Promise<ActivityLog
 
 // Get activity logs by entity
 export async function getActivityLogsByEntity(
-  entityType: FirestoreActivityLog["entityType"],
+  entityType: ActivityEntityType,
   entityId: string
 ): Promise<ActivityLog[]> {
   const logs = await getDocuments<FirestoreActivityLog>(
@@ -356,4 +356,115 @@ export async function logNotePinned(
     details: isPinned ? `Pinned note "${noteTitle}"` : `Unpinned note "${noteTitle}"`,
     metadata: { isPinned },
   });
+}
+
+// Intern activity logging — these create an immutable audit trail
+// The log survives even if the intern record is deleted afterward
+
+export async function logInternCreated(
+  userId: string,
+  internId: string,
+  internName: string
+): Promise<string> {
+  return logActivity({
+    userId,
+    action: "CREATE",
+    entityType: "INTERN",
+    entityId: internId,
+    entityName: internName,
+    details: `Added intern "${internName}"`,
+  });
+}
+
+export async function logInternDeleted(
+  userId: string,
+  internId: string,
+  internName: string
+): Promise<string> {
+  return logActivity({
+    userId,
+    action: "DELETE",
+    entityType: "INTERN",
+    entityId: internId,
+    entityName: internName,
+    details: `Deleted intern "${internName}"`,
+  });
+}
+
+export async function logCertificateGenerated(
+  userId: string,
+  internId: string,
+  internName: string
+): Promise<string> {
+  return logActivity({
+    userId,
+    action: "GENERATE_CERTIFICATE",
+    entityType: "INTERN",
+    entityId: internId,
+    entityName: internName,
+    details: `Generated completion certificate for "${internName}"`,
+  });
+}
+
+export async function logOfferLetterGenerated(
+  userId: string,
+  internId: string,
+  internName: string
+): Promise<string> {
+  return logActivity({
+    userId,
+    action: "GENERATE_OFFER_LETTER",
+    entityType: "INTERN",
+    entityId: internId,
+    entityName: internName,
+    details: `Generated offer letter for "${internName}"`,
+  });
+}
+
+export async function logPayslipGenerated(
+  userId: string,
+  internId: string,
+  internName: string,
+  month?: string
+): Promise<string> {
+  return logActivity({
+    userId,
+    action: "GENERATE_PAYSLIP",
+    entityType: "INTERN",
+    entityId: internId,
+    entityName: internName,
+    details: month
+      ? `Generated payslip for "${internName}" (${month})`
+      : `Generated payslip for "${internName}"`,
+    metadata: month ? { month } : undefined,
+  });
+}
+
+export async function logAttendanceGenerated(
+  userId: string,
+  internId: string,
+  internName: string,
+  month?: string
+): Promise<string> {
+  return logActivity({
+    userId,
+    action: "GENERATE_ATTENDANCE",
+    entityType: "INTERN",
+    entityId: internId,
+    entityName: internName,
+    details: month
+      ? `Generated attendance report for "${internName}" (${month})`
+      : `Generated attendance report for "${internName}"`,
+    metadata: month ? { month } : undefined,
+  });
+}
+
+// Get activity logs for all interns (for admin audit view)
+export async function getInternActivityLogs(): Promise<ActivityLog[]> {
+  const logs = await getDocuments<FirestoreActivityLog>(
+    COLLECTIONS.ACTIVITY_LOGS,
+    where("entityType", "==", "INTERN"),
+    orderBy("createdAt", "desc")
+  );
+  return logs.map(toActivityLog);
 }

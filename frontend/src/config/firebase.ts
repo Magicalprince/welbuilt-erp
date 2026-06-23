@@ -1,4 +1,4 @@
-import { initializeApp } from "firebase/app";
+import { initializeApp, getApps } from "firebase/app";
 import { getAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
@@ -15,11 +15,17 @@ const firebaseConfig = {
   measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || "G-JSR6ZC64S8"
 };
 
-// Initialize Firebase
+// Primary app for the logged-in session
 export const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db = getFirestore(app);
 export const storage = getStorage(app);
+
+// Secondary app used ONLY for creating new user accounts without signing out the current user
+const SECONDARY_APP_NAME = "secondaryAuth";
+export const secondaryApp = getApps().find((a) => a.name === SECONDARY_APP_NAME)
+  || initializeApp(firebaseConfig, SECONDARY_APP_NAME);
+export const secondaryAuth = getAuth(secondaryApp);
 
 // Initialize Analytics conditionally (only in browser)
 export const initAnalytics = async () => {

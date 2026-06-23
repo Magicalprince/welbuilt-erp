@@ -40,6 +40,8 @@ import {
 import { parseDateString } from "@/services/certificateService";
 import { getInternById } from "@/services/internService";
 import { deleteFileFromR2, extractFileKeyFromUrl, getSignedDownloadUrl } from "@/services/r2Service";
+import { logOfferLetterGenerated } from "@/services/activityLogService";
+import { useAuthStore } from "@/store/authStore";
 import toast from "react-hot-toast";
 
 // domainOptions built dynamically from data inside the component
@@ -99,6 +101,7 @@ export default function OfferLettersTab() {
   const { data: interns, isLoading } = useInterns();
   const deleteMutation = useDeleteIntern();
   const bulkDeleteMutation = useBulkDeleteInterns();
+  const currentUser = useAuthStore((s) => s.user);
 
   const domainOptions = useMemo(() => {
     const domains = interns ? [...new Set(interns.map(i => i.domain).filter(Boolean))].sort() : [];
@@ -138,6 +141,9 @@ export default function OfferLettersTab() {
     try {
       await generateAndUploadOfferLetter(intern);
       toast.success(`Offer letter generated for ${intern.name}`);
+      if (currentUser?.id) {
+        logOfferLetterGenerated(currentUser.id, intern.id, intern.name).catch(() => {});
+      }
       refreshInterns();
     } catch (error) {
       console.error("Failed to generate offer letter:", error);
@@ -153,6 +159,9 @@ export default function OfferLettersTab() {
     try {
       await generateAndUploadOfferLetter(intern);
       toast.success(`Offer letter regenerated for ${intern.name}`);
+      if (currentUser?.id) {
+        logOfferLetterGenerated(currentUser.id, intern.id, intern.name).catch(() => {});
+      }
       refreshInterns();
     } catch (error) {
       console.error("Failed to regenerate offer letter:", error);
@@ -213,7 +222,7 @@ export default function OfferLettersTab() {
         }
       }
 
-      await deleteMutation.mutateAsync(deleteConfirm.id);
+      await deleteMutation.mutateAsync({ id: deleteConfirm.id, name: deleteConfirm.name });
       toast.success("Intern deleted");
       setDeleteConfirm(null);
     } catch (error) {
@@ -287,8 +296,9 @@ export default function OfferLettersTab() {
         })
     );
 
+    const internsInfo = internsToDelete.map((i) => ({ id: i.id, name: i.name }));
     try {
-      await bulkDeleteMutation.mutateAsync(selectedInterns);
+      await bulkDeleteMutation.mutateAsync({ ids: selectedInterns, interns: internsInfo });
       toast.success(`Deleted ${selectedInterns.length} interns`);
       setSelectedInterns([]);
       setBulkDeleteConfirm(false);

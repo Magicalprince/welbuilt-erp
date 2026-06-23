@@ -40,6 +40,8 @@ import {
 import type { EmployeePayslipData } from "@/services/payslipService";
 import { updateIntern } from "@/services/internService";
 import { deleteFileFromR2, extractFileKeyFromUrl, getSignedDownloadUrl } from "@/services/r2Service";
+import { logPayslipGenerated } from "@/services/activityLogService";
+import { useAuthStore } from "@/store/authStore";
 import toast from "react-hot-toast";
 
 // domainOptions built dynamically from data inside the component
@@ -106,6 +108,7 @@ export default function PayslipTab() {
   const { data: interns, isLoading } = useInterns();
   const deleteMutation = useDeleteIntern();
   const bulkDeleteMutation = useBulkDeleteInterns();
+  const currentUser = useAuthStore((s) => s.user);
 
   const handleBulkDelete = async () => {
     const selected = filteredInterns.filter((i) => selectedInterns.includes(i.id));
@@ -118,7 +121,8 @@ export default function PayslipTab() {
             return key ? deleteFileFromR2(key) : Promise.resolve();
           })
       );
-      await bulkDeleteMutation.mutateAsync(selectedInterns);
+      const internsInfo = selected.map((i) => ({ id: i.id, name: i.name }));
+      await bulkDeleteMutation.mutateAsync({ ids: selectedInterns, interns: internsInfo });
       toast.success(`Deleted ${selectedInterns.length} interns`);
       setSelectedInterns([]);
       setBulkDeleteConfirm(false);
@@ -204,7 +208,7 @@ export default function PayslipTab() {
         const fileKey = extractFileKeyFromUrl(deleteConfirm.payslipUrl);
         if (fileKey) await deleteFileFromR2(fileKey).catch(console.error);
       }
-      await deleteMutation.mutateAsync(deleteConfirm.id);
+      await deleteMutation.mutateAsync({ id: deleteConfirm.id, name: deleteConfirm.name });
       toast.success("Intern deleted");
       setDeleteConfirm(null);
     } catch {
@@ -529,6 +533,11 @@ export default function PayslipTab() {
           intern={generateIntern}
           onSuccess={refreshInterns}
           setGeneratingSlip={setGeneratingSlip}
+          onGenerated={(internId, internName, month) => {
+            if (currentUser?.id) {
+              logPayslipGenerated(currentUser.id, internId, internName, month).catch(() => {});
+            }
+          }}
         />
       )}
 
@@ -586,12 +595,14 @@ function GeneratePayslipModal({
   intern,
   onSuccess,
   setGeneratingSlip,
+  onGenerated,
 }: {
   isOpen: boolean;
   onClose: () => void;
   intern: Intern;
   onSuccess: () => void;
   setGeneratingSlip: (id: string | null) => void;
+  onGenerated?: (internId: string, internName: string, month: string) => void;
 }) {
   const [referenceNumber, setReferenceNumber] = useState(intern.referenceNumber || "");
   const [numberOfMonths, setNumberOfMonths] = useState(intern.numberOfMonths?.toString() || "1");
@@ -636,6 +647,7 @@ function GeneratePayslipModal({
       );
 
       toast.success(`Payslip generated for ${intern.name}`);
+      onGenerated?.(intern.id, intern.name, `${month} ${year}`);
       onSuccess();
       onClose();
     } catch (error) {

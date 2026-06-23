@@ -41,6 +41,8 @@ import {
 } from "@/services/certificateService";
 import { bulkCreateInterns, getInternById } from "@/services/internService";
 import { deleteFileFromR2, extractFileKeyFromUrl, getSignedDownloadUrl } from "@/services/r2Service";
+import { logCertificateGenerated } from "@/services/activityLogService";
+import { useAuthStore } from "@/store/authStore";
 import toast from "react-hot-toast";
 
 // domainOptions built dynamically from data inside the component
@@ -96,6 +98,7 @@ export default function CertificatesTab() {
   const { data: interns, isLoading } = useInterns();
   const deleteMutation = useDeleteIntern();
   const bulkDeleteMutation = useBulkDeleteInterns();
+  const currentUser = useAuthStore((s) => s.user);
 
   const domainOptions = useMemo(() => {
     const domains = interns ? [...new Set(interns.map(i => i.domain).filter(Boolean))].sort() : [];
@@ -132,6 +135,9 @@ export default function CertificatesTab() {
     try {
       await generateAndUploadCertificate(intern);
       toast.success(`Certificate generated for ${intern.name}`);
+      if (currentUser?.id) {
+        logCertificateGenerated(currentUser.id, intern.id, intern.name).catch(() => {});
+      }
       // Refresh to show the View button
       refreshInterns();
     } catch (error) {
@@ -148,6 +154,9 @@ export default function CertificatesTab() {
     try {
       await generateAndUploadCertificate(intern);
       toast.success(`Certificate regenerated for ${intern.name}`);
+      if (currentUser?.id) {
+        logCertificateGenerated(currentUser.id, intern.id, intern.name).catch(() => {});
+      }
       refreshInterns();
     } catch (error) {
       console.error("Failed to regenerate certificate:", error);
@@ -210,7 +219,7 @@ export default function CertificatesTab() {
         }
       }
 
-      await deleteMutation.mutateAsync(deleteConfirm.id);
+      await deleteMutation.mutateAsync({ id: deleteConfirm.id, name: deleteConfirm.name });
       toast.success("Intern deleted");
       setDeleteConfirm(null);
     } catch (error) {
@@ -286,8 +295,9 @@ export default function CertificatesTab() {
         })
     );
 
+    const internsInfo = internsToDelete.map((i) => ({ id: i.id, name: i.name }));
     try {
-      await bulkDeleteMutation.mutateAsync(selectedInterns);
+      await bulkDeleteMutation.mutateAsync({ ids: selectedInterns, interns: internsInfo });
       toast.success(`Deleted ${selectedInterns.length} interns`);
       setSelectedInterns([]);
       setBulkDeleteConfirm(false);

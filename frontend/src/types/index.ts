@@ -1,4 +1,6 @@
 // User / Founder Types
+export type UserRole = "FOUNDER" | "INTERN_MANAGER" | "DEACTIVATED";
+
 export interface User {
   id: string;
   name: string;
@@ -6,7 +8,7 @@ export interface User {
   phone?: string;
   avatar?: string;
   equityPercent: number;
-  role: "FOUNDER";
+  role: UserRole;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -246,14 +248,30 @@ export type ActivityAction =
   | "PAYMENT"
   | "UPLOAD"
   | "APPROVE"
-  | "REJECT";
+  | "REJECT"
+  | "GENERATE_CERTIFICATE"
+  | "GENERATE_OFFER_LETTER"
+  | "GENERATE_PAYSLIP"
+  | "GENERATE_ATTENDANCE";
+
+export type ActivityEntityType =
+  | "PROJECT"
+  | "CLIENT"
+  | "INVOICE"
+  | "EXPENSE"
+  | "INCOME"
+  | "DOCUMENT"
+  | "NOTE"
+  | "WITHDRAWAL"
+  | "USER"
+  | "INTERN";
 
 export interface ActivityLog {
   id: string;
   userId: string;
   user?: User;
   action: ActivityAction;
-  entityType: "PROJECT" | "CLIENT" | "INVOICE" | "EXPENSE" | "INCOME" | "DOCUMENT" | "NOTE" | "WITHDRAWAL" | "USER";
+  entityType: ActivityEntityType;
   entityId: string;
   entityName: string;
   details?: string;

@@ -9,7 +9,7 @@ import {
 } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
 import { auth, db } from "@/config/firebase";
-import type { User } from "@/types";
+import type { User, UserRole } from "@/types";
 
 interface AuthState {
   user: User | null;
@@ -45,13 +45,13 @@ export const useAuthStore = create<AuthState>()(
             const userData = { id: userDoc.id, ...userDoc.data() } as User;
             set({ user: userData, firebaseUser, isLoading: false });
           } else {
-            // If no user document, create a basic one (for founders)
+            // Fallback only for founders who predate the users collection
             const basicUser: User = {
               id: firebaseUser.uid,
               name: firebaseUser.displayName || "Founder",
               email: firebaseUser.email || email,
               equityPercent: 33,
-              role: "FOUNDER",
+              role: "FOUNDER" as UserRole,
               createdAt: new Date(),
               updatedAt: new Date(),
             };
