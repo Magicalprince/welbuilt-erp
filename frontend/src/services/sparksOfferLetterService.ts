@@ -98,23 +98,10 @@ export async function generateSparksOfferLetterPdf(data: SparksOfferLetterData):
   const SB = 72; // sidebar width
   page.drawRectangle({ x: 0, y: 0, width: SB, height: H, color: teal });
 
-  // Gold accent line on sidebar right edge
-  page.drawRectangle({ x: SB, y: 0, width: 3, height: H, color: gold });
+  // Gold accent line on sidebar right edge — only below the header
+  page.drawRectangle({ x: SB, y: 0, width: 3, height: H - 80, color: gold });
 
-  // Sparks logo on sidebar (white version if available, else text)
   const logoBytes = await fetchBytes("/images/sparks/logo.png");
-  if (logoBytes) {
-    const logoImg = await pdfDoc.embedPng(logoBytes);
-    const logoDims = logoImg.scale(0.15);
-    // Draw rotated 90° — pdf-lib doesn't rotate images, so draw vertically stacked text instead
-    // Draw logo at top of sidebar, small
-    page.drawImage(logoImg, {
-      x: (SB - logoDims.width) / 2,
-      y: H - logoDims.height - 20,
-      width: logoDims.width,
-      height: logoDims.height,
-    });
-  }
 
   // "SPARKS AI" vertical text on sidebar
   const sbText = "SPARKS AI";
@@ -159,6 +146,18 @@ export async function generateSparksOfferLetterPdf(data: SparksOfferLetterData):
   // ── Top header bar (teal strip at top) ────────────────────────────────────
   page.drawRectangle({ x: SB + 3, y: H - 80, width: W - SB - 3, height: 80, color: teal });
 
+  // Logo on right side of header
+  if (logoBytes) {
+    const logoImg = await pdfDoc.embedPng(logoBytes);
+    const logoDims = logoImg.scale(0.18);
+    page.drawImage(logoImg, {
+      x: W - logoDims.width - 20,
+      y: H - (80 + logoDims.height) / 2 - logoDims.height / 2 + 10,
+      width: logoDims.width,
+      height: logoDims.height,
+    });
+  }
+
   // Company name
   page.drawText("SPARKS AI SOLUTIONS", {
     x: CX, y: H - 30,
@@ -168,9 +167,6 @@ export async function generateSparksOfferLetterPdf(data: SparksOfferLetterData):
     x: CX, y: H - 46,
     size: 8, font: regular, color: white, opacity: 0.8,
   });
-
-  // Gold divider below header name
-  page.drawRectangle({ x: CX, y: H - 52, width: CW, height: 1.5, color: gold });
 
   // Address right-aligned in header
   const addr1 = "23/14 A, Ramalinganar 6th Street, Tiruvannamalai";
@@ -201,7 +197,6 @@ export async function generateSparksOfferLetterPdf(data: SparksOfferLetterData):
 
   // ── Candidate info card ───────────────────────────────────────────────────
   page.drawRectangle({ x: CX - 6, y: Y - 42, width: CW + 12, height: 52, color: teal, opacity: 0.06 });
-  page.drawRectangle({ x: CX - 6, y: Y + 8, width: 3, height: 52, color: gold });
 
   page.drawText("Candidate", { x: CX, y: Y, size: 7, font: regular, color: teal });
   Y -= 13;
