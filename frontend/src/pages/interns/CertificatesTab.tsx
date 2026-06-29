@@ -14,6 +14,8 @@ import {
   Eye,
   Pencil,
   RefreshCw,
+  Zap,
+  Building2,
 } from "lucide-react";
 import {
   Button,
@@ -39,11 +41,19 @@ import {
   mapDurationString,
   parseDateString,
 } from "@/services/certificateService";
+import {
+  generateAndDownloadSparksCertificate,
+  generateAndUploadSparksCertificate,
+  bulkGenerateSparksCertificates,
+} from "@/services/sparksCertificateService";
 import { bulkCreateInterns, getInternById } from "@/services/internService";
 import { deleteFileFromR2, extractFileKeyFromUrl, getSignedDownloadUrl } from "@/services/r2Service";
 import { logCertificateGenerated } from "@/services/activityLogService";
 import { useAuthStore } from "@/store/authStore";
 import toast from "react-hot-toast";
+
+// Brand type
+type CertBrand = "welbuilt" | "sparks";
 
 // domainOptions built dynamically from data inside the component
 
@@ -69,6 +79,9 @@ const durationOptions: { value: InternDuration; label: string }[] = [
 ];
 
 export default function CertificatesTab() {
+  // Brand selector — which certificate template to use
+  const [activeBrand, setActiveBrand] = useState<CertBrand>("welbuilt");
+
   // State
   const [searchQuery, setSearchQuery] = useState("");
   const [domainFilter, setDomainFilter] = useState<string>("ALL");
@@ -133,12 +146,15 @@ export default function CertificatesTab() {
   const handleGenerateCertificate = async (intern: Intern & { id: string }) => {
     setGeneratingCert(intern.id);
     try {
-      await generateAndUploadCertificate(intern);
-      toast.success(`Certificate generated for ${intern.name}`);
+      if (activeBrand === "sparks") {
+        await generateAndUploadSparksCertificate(intern);
+      } else {
+        await generateAndUploadCertificate(intern);
+      }
+      toast.success(`${activeBrand === "sparks" ? "Sparks AI" : "WelBuilt AI"} certificate generated for ${intern.name}`);
       if (currentUser?.id) {
         logCertificateGenerated(currentUser.id, intern.id, intern.name, currentUser.name).catch(() => {});
       }
-      // Refresh to show the View button
       refreshInterns();
     } catch (error) {
       console.error("Failed to generate certificate:", error);
@@ -148,11 +164,15 @@ export default function CertificatesTab() {
     }
   };
 
-  // Handle certificate regeneration (re-generate with current data)
+  // Handle certificate regeneration
   const handleRegenerateCertificate = async (intern: Intern & { id: string }) => {
     setGeneratingCert(intern.id);
     try {
-      await generateAndUploadCertificate(intern);
+      if (activeBrand === "sparks") {
+        await generateAndUploadSparksCertificate(intern);
+      } else {
+        await generateAndUploadCertificate(intern);
+      }
       toast.success(`Certificate regenerated for ${intern.name}`);
       if (currentUser?.id) {
         logCertificateGenerated(currentUser.id, intern.id, intern.name, currentUser.name).catch(() => {});
@@ -166,10 +186,14 @@ export default function CertificatesTab() {
     }
   };
 
-  // Handle certificate download
+  // Handle certificate download (generates fresh and saves locally)
   const handleDownloadCertificate = async (intern: Intern) => {
     try {
-      await generateAndDownloadCertificate(intern);
+      if (activeBrand === "sparks") {
+        await generateAndDownloadSparksCertificate(intern);
+      } else {
+        await generateAndDownloadCertificate(intern);
+      }
       toast.success("Certificate downloaded");
     } catch (error) {
       console.error("Failed to download certificate:", error);
@@ -242,9 +266,13 @@ export default function CertificatesTab() {
     setBulkProgress({ current: 0, total: internsToGenerate.length, name: "" });
 
     try {
-      const results = await bulkGenerateCertificates(internsToGenerate, (current, total, name) => {
-        setBulkProgress({ current, total, name });
-      });
+      const results = activeBrand === "sparks"
+        ? await bulkGenerateSparksCertificates(internsToGenerate, (current, total, name) => {
+            setBulkProgress({ current, total, name });
+          })
+        : await bulkGenerateCertificates(internsToGenerate, (current, total, name) => {
+            setBulkProgress({ current, total, name });
+          });
 
       const successful = results.filter((r) => r.success).length;
       const failed = results.filter((r) => !r.success).length;
@@ -252,11 +280,10 @@ export default function CertificatesTab() {
       if (failed > 0) {
         toast.error(`Generated ${successful} certificates, ${failed} failed`);
       } else {
-        toast.success(`Generated ${successful} certificates successfully`);
+        toast.success(`Generated ${successful} ${activeBrand === "sparks" ? "Sparks AI" : "WelBuilt AI"} certificates`);
       }
 
       setSelectedInterns([]);
-      // Refresh to show the View buttons
       refreshInterns();
     } catch (error) {
       toast.error("Bulk generation failed");
@@ -308,6 +335,42 @@ export default function CertificatesTab() {
 
   return (
     <div className="space-y-4">
+      {/* Brand Selector */}
+      <div className="flex items-center gap-3">
+        <span className="text-sm font-medium text-muted-foreground">Certificate Template:</span>
+        <div className="flex rounded-lg border border-border/60 overflow-hidden">
+          <button
+            onClick={() => setActiveBrand("welbuilt")}
+            className={cn(
+              "flex items-center gap-2 px-4 py-2 text-sm font-medium transition-all",
+              activeBrand === "welbuilt"
+                ? "bg-primary text-primary-foreground"
+                : "bg-background text-muted-foreground hover:bg-accent"
+            )}
+          >
+            <Building2 className="h-4 w-4" />
+            WelBuilt AI
+          </button>
+          <button
+            onClick={() => setActiveBrand("sparks")}
+            className={cn(
+              "flex items-center gap-2 px-4 py-2 text-sm font-medium transition-all border-l border-border/60",
+              activeBrand === "sparks"
+                ? "bg-amber-500 text-white"
+                : "bg-background text-muted-foreground hover:bg-accent"
+            )}
+          >
+            <Zap className="h-4 w-4" />
+            Sparks AI
+          </button>
+        </div>
+        {activeBrand === "sparks" && (
+          <span className="text-xs text-amber-600 dark:text-amber-400 font-medium">
+            Generates Sparks AI branded certificates with logo, seal &amp; director signature
+          </span>
+        )}
+      </div>
+
       {/* Action bar */}
       <div className="flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
         <div className="flex flex-col sm:flex-row gap-2 flex-1">
@@ -530,6 +593,7 @@ export default function CertificatesTab() {
         isOpen={isNewModalOpen}
         onClose={() => setIsNewModalOpen(false)}
         onCertificateGenerated={refreshInterns}
+        brand={activeBrand}
       />
 
       {/* Edit Certificate Modal */}
@@ -545,6 +609,7 @@ export default function CertificatesTab() {
         isOpen={isBulkModalOpen}
         onClose={() => setIsBulkModalOpen(false)}
         onImportComplete={refreshInterns}
+        brand={activeBrand}
       />
 
       {/* Delete Confirmation */}
@@ -607,10 +672,12 @@ function NewCertificateModal({
   isOpen,
   onClose,
   onCertificateGenerated,
+  brand = "welbuilt",
 }: {
   isOpen: boolean;
   onClose: () => void;
   onCertificateGenerated?: () => void;
+  brand?: CertBrand;
 }) {
   const createMutation = useCreateIntern();
   const [formData, setFormData] = useState({
@@ -677,7 +744,6 @@ function NewCertificateModal({
       toast.success("Intern added successfully");
 
       if (generateCert) {
-        // Fetch the created intern to get the real internId from Firestore
         const createdIntern = await getInternById(internId);
         const intern: Intern & { id: string } = {
           id: internId,
@@ -692,9 +758,12 @@ function NewCertificateModal({
         };
 
         try {
-          await generateAndUploadCertificate(intern, formData.domain.trim());
-          toast.success("Certificate generated");
-          // Notify parent to refresh the list
+          if (brand === "sparks") {
+            await generateAndUploadSparksCertificate(intern);
+          } else {
+            await generateAndUploadCertificate(intern, formData.domain.trim());
+          }
+          toast.success(`${brand === "sparks" ? "Sparks AI" : "WelBuilt AI"} certificate generated`);
           onCertificateGenerated?.();
         } catch (error) {
           toast.error("Failed to generate certificate");
@@ -709,7 +778,15 @@ function NewCertificateModal({
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="New Certificate">
+    <Modal isOpen={isOpen} onClose={onClose} title={`New Certificate — ${brand === "sparks" ? "Sparks AI" : "WelBuilt AI"}`}>
+      {brand === "sparks" && (
+        <div className="flex items-center gap-2 mb-3 px-3 py-2 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg">
+          <Zap className="h-4 w-4 text-amber-500 shrink-0" />
+          <span className="text-xs text-amber-700 dark:text-amber-300">
+            Will generate a Sparks AI branded certificate with logo, seal and director signature
+          </span>
+        </div>
+      )}
       <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-2">
         <div className="grid grid-cols-2 gap-4">
           <div className="col-span-2">
@@ -1118,10 +1195,12 @@ function BulkImportModal({
   isOpen,
   onClose,
   onImportComplete,
+  brand = "welbuilt",
 }: {
   isOpen: boolean;
   onClose: () => void;
   onImportComplete?: () => void;
+  brand?: CertBrand;
 }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
@@ -1181,16 +1260,17 @@ function BulkImportModal({
       // Generate certificates if selected
       if (generateCerts && ids.length > 0) {
         toast.loading("Generating certificates...", { id: "bulk-cert-gen" });
-        // Fetch created interns with their real internIds
         const createdInterns: Array<Intern & { id: string }> = [];
         for (let i = 0; i < ids.length; i++) {
           const intern = await getInternById(ids[i]);
           if (intern) createdInterns.push({ ...intern, id: ids[i] });
         }
-        const results = await bulkGenerateCertificates(createdInterns);
+        const results = brand === "sparks"
+          ? await bulkGenerateSparksCertificates(createdInterns)
+          : await bulkGenerateCertificates(createdInterns);
         const successful = results.filter((r) => r.success).length;
         toast.dismiss("bulk-cert-gen");
-        toast.success(`Generated ${successful} certificates`);
+        toast.success(`Generated ${successful} ${brand === "sparks" ? "Sparks AI" : "WelBuilt AI"} certificates`);
       }
 
       // Reset and close
@@ -1205,33 +1285,77 @@ function BulkImportModal({
     }
   };
 
-  const downloadTemplate = () => {
+  const downloadTemplate = async () => {
+    const XLSX = await import("xlsx");
+
     const headers = [
-      "Name",
-      "Email",
-      "Phone",
-      "College",
-      "Year",
-      "Domain",
-      "Duration",
-      "Start Date",
-      "End Date",
-      "Issue Date",
-      "Payment Status",
+      "Name", "Email", "Phone", "College", "Year",
+      "Domain", "Duration", "Start Date", "End Date", "Issue Date", "Payment Status",
     ];
-    const csvContent = headers.join(",") + "\n" + "John Doe,john@email.com,9876543210,ABC College,3rd Year,Web Development,2-Month,01/01/2024,28/02/2024,01/03/2024,PAID";
-    const blob = new Blob([csvContent], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "intern_template.csv";
-    a.click();
-    URL.revokeObjectURL(url);
+
+    const brandLabel = brand === "sparks" ? "Sparks AI Solutions" : "WelBuilt AI Solutions";
+
+    const demoRows = [
+      ["Arjun Sharma",   "arjun.sharma@email.com",   "9876543210", "IIT Madras",               "3rd Year", "Web Development",    "2-Month", "01/01/2026", "28/02/2026", "01/03/2026", "PAID"],
+      ["Priya Nair",     "priya.nair@email.com",     "9876543211", "Anna University",           "2nd Year", "AI/ML",              "3-Month", "01/01/2026", "31/03/2026", "01/04/2026", "PAID"],
+      ["Rahul Verma",    "rahul.verma@email.com",    "9876543212", "VIT Chennai",               "4th Year", "Data Science",       "1-Month", "01/02/2026", "28/02/2026", "01/03/2026", "UNPAID"],
+      ["Sneha Reddy",    "sneha.reddy@email.com",    "9876543213", "BITS Pilani",               "3rd Year", "UI/UX Design",       "2-Month", "15/01/2026", "15/03/2026", "16/03/2026", "PAID"],
+      ["Vikram Patel",   "vikram.patel@email.com",   "9876543214", "NIT Trichy",                "2nd Year", "Mobile Development", "3-Month", "01/03/2026", "31/05/2026", "01/06/2026", "UNPAID"],
+      ["Ananya Singh",   "ananya.singh@email.com",   "9876543215", "SRM University",            "1st Year", "Cybersecurity",      "1-Month", "01/04/2026", "30/04/2026", "01/05/2026", "PAID"],
+      ["Karan Mehta",    "karan.mehta@email.com",    "9876543216", "Manipal University",        "4th Year", "Cloud Computing",    "6-Month", "01/01/2026", "30/06/2026", "01/07/2026", "PAID"],
+      ["Divya Kumar",    "divya.kumar@email.com",    "9876543217", "PSG College of Technology", "3rd Year", "Business Analytics", "2-Month", "01/02/2026", "31/03/2026", "01/04/2026", "UNPAID"],
+    ];
+
+    const ws = XLSX.utils.aoa_to_sheet([headers, ...demoRows]);
+
+    // Column widths
+    ws["!cols"] = [
+      { wch: 20 }, { wch: 28 }, { wch: 14 }, { wch: 30 }, { wch: 10 },
+      { wch: 22 }, { wch: 10 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 16 },
+    ];
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Interns");
+
+    // Instructions sheet
+    const infoData = [
+      [`${brandLabel} — Intern Bulk Upload Template`],
+      [""],
+      ["FIELD GUIDE:"],
+      ["Name",           "Full name of the intern (required)"],
+      ["Email",          "Valid email address (required)"],
+      ["Phone",          "10-digit phone number (required)"],
+      ["College",        "Full college/university name (required)"],
+      ["Year",           "1st Year / 2nd Year / 3rd Year / 4th Year"],
+      ["Domain",         "Internship domain e.g. Web Development, AI/ML, Data Science"],
+      ["Duration",       "1-Month / 2-Month / 3-Month / 6-Month"],
+      ["Start Date",     "DD/MM/YYYY format e.g. 01/01/2026"],
+      ["End Date",       "DD/MM/YYYY format e.g. 31/03/2026"],
+      ["Issue Date",     "DD/MM/YYYY format (optional, defaults to today)"],
+      ["Payment Status", "PAID or UNPAID"],
+    ];
+    const wsInfo = XLSX.utils.aoa_to_sheet(infoData);
+    wsInfo["!cols"] = [{ wch: 18 }, { wch: 55 }];
+    XLSX.utils.book_append_sheet(wb, wsInfo, "Instructions");
+
+    XLSX.writeFile(wb, `${brand === "sparks" ? "sparks" : "welbuilt"}_intern_bulk_upload_template.xlsx`);
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Bulk Import Interns">
+    <Modal isOpen={isOpen} onClose={onClose} title={`Bulk Import — ${brand === "sparks" ? "Sparks AI" : "WelBuilt AI"}`}>
       <div className="space-y-4">
+        {/* Brand badge */}
+        <div className={cn(
+          "flex items-center gap-2 px-3 py-2 rounded-lg border text-xs font-medium",
+          brand === "sparks"
+            ? "bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300"
+            : "bg-primary/5 border-primary/20 text-primary"
+        )}>
+          {brand === "sparks" ? <Zap className="h-3.5 w-3.5" /> : <Building2 className="h-3.5 w-3.5" />}
+          Certificates will be generated using the{" "}
+          <strong>{brand === "sparks" ? "Sparks AI" : "WelBuilt AI"}</strong> template
+        </div>
+
         <div className="text-center border-2 border-dashed rounded-lg p-6">
           {file ? (
             <div className="flex items-center justify-center gap-2">
@@ -1273,7 +1397,7 @@ function BulkImportModal({
 
         <Button variant="link" className="text-sm" onClick={downloadTemplate}>
           <Download className="h-4 w-4 mr-1" />
-          Download Template
+          Download Excel Template (.xlsx) with demo data
         </Button>
 
         {parsedData.length > 0 && (
