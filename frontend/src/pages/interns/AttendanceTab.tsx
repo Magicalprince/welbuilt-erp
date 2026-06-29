@@ -36,6 +36,11 @@ import {
   generateAndUploadAttendance,
   generateAndDownloadEmployeeAttendance,
 } from "@/services/attendanceService";
+import {
+  generateAndDownloadSparksAttendance,
+  generateAndUploadSparksAttendance,
+} from "@/services/sparksAttendanceService";
+import { Building2, Zap } from "lucide-react";
 import type { EmployeeAttendanceData } from "@/services/attendanceService";
 import { updateIntern } from "@/services/internService";
 import { deleteFileFromR2, extractFileKeyFromUrl, getSignedDownloadUrl } from "@/services/r2Service";
@@ -63,6 +68,7 @@ type Mode = "intern" | "employee";
 
 export default function AttendanceTab() {
   const [mode, setMode] = useState<Mode>("intern");
+  const [activeBrand, setActiveBrand] = useState<"welbuilt" | "sparks">("welbuilt");
   const [searchQuery, setSearchQuery] = useState("");
   const [domainFilter, setDomainFilter] = useState<string>("ALL");
   const [yearFilter, setYearFilter] = useState("ALL");
@@ -118,10 +124,13 @@ export default function AttendanceTab() {
     queryClient.invalidateQueries({ queryKey: internQueryKeys.all });
   };
 
-  // Filter interns - show ALL interns (shared data from other tabs)
+  // Filter interns by brand + search/domain/year/payment
   const filteredInterns = useMemo(() => {
     if (!interns) return [];
     return interns.filter((intern) => {
+      const internBrand = intern.brand ?? "welbuilt";
+      if (internBrand !== activeBrand) return false;
+
       const matchesSearch =
         intern.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         intern.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -134,17 +143,27 @@ export default function AttendanceTab() {
 
       return matchesSearch && matchesDomain && matchesYear && matchesPayment;
     });
-  }, [interns, searchQuery, domainFilter, yearFilter, paymentFilter]);
+  }, [interns, searchQuery, domainFilter, yearFilter, paymentFilter, activeBrand]);
 
   // Handle download (for interns that already have attendance data)
   const handleDownloadAttendance = async (intern: Intern) => {
     if (intern.totalInternshipDays === undefined || intern.daysPresent === undefined) return;
+    const now = new Date();
+    const month = now.toLocaleDateString("en-IN", { month: "long", year: "numeric" });
     try {
-      await generateAndDownloadAttendance(intern, {
-        totalInternshipDays: intern.totalInternshipDays,
-        daysPresent: intern.daysPresent,
-        collegeAddress: "",
-      });
+      if (activeBrand === "sparks") {
+        await generateAndDownloadSparksAttendance(intern, {
+          totalDays: intern.totalInternshipDays,
+          daysPresent: intern.daysPresent,
+          month,
+        });
+      } else {
+        await generateAndDownloadAttendance(intern, {
+          totalInternshipDays: intern.totalInternshipDays,
+          daysPresent: intern.daysPresent,
+          collegeAddress: "",
+        });
+      }
       toast.success("Attendance report downloaded");
     } catch (error) {
       console.error("Failed to download attendance:", error);
@@ -208,6 +227,34 @@ export default function AttendanceTab() {
 
   return (
     <div className="space-y-4">
+      {/* Brand toggle (intern mode only) */}
+      {mode === "intern" && (
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setActiveBrand("welbuilt")}
+            className={cn(
+              "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium border transition-colors",
+              activeBrand === "welbuilt"
+                ? "bg-blue-600 text-white border-blue-600"
+                : "bg-transparent text-muted-foreground border-border hover:border-blue-400"
+            )}
+          >
+            <Building2 className="h-3.5 w-3.5" /> WelBuilt AI
+          </button>
+          <button
+            onClick={() => setActiveBrand("sparks")}
+            className={cn(
+              "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium border transition-colors",
+              activeBrand === "sparks"
+                ? "bg-amber-500 text-white border-amber-500"
+                : "bg-transparent text-muted-foreground border-border hover:border-amber-400"
+            )}
+          >
+            <Zap className="h-3.5 w-3.5" /> Sparks AI
+          </button>
+        </div>
+      )}
+
       {/* Mode Toggle */}
       <div className="flex items-center gap-2 p-1 bg-muted rounded-lg w-fit">
         <Button
@@ -520,6 +567,7 @@ export default function AttendanceTab() {
           intern={generateIntern}
           onSuccess={refreshInterns}
           setGeneratingReport={setGeneratingReport}
+          brand={activeBrand}
           onGenerated={(internId, internName) => {
             if (currentUser?.id) {
               logAttendanceGenerated(currentUser.id, internId, internName, undefined, currentUser.name).catch(() => {});
@@ -583,6 +631,7 @@ function GenerateAttendanceModal({
   onSuccess,
   setGeneratingReport,
   onGenerated,
+  brand = "welbuilt",
 }: {
   isOpen: boolean;
   onClose: () => void;
@@ -590,10 +639,12 @@ function GenerateAttendanceModal({
   onSuccess: () => void;
   setGeneratingReport: (id: string | null) => void;
   onGenerated?: (internId: string, internName: string) => void;
+  brand?: "welbuilt" | "sparks";
 }) {
   const [totalDays, setTotalDays] = useState(intern.totalInternshipDays?.toString() || "");
   const [daysPresent, setDaysPresent] = useState(intern.daysPresent?.toString() || "");
   const [collegeAddress, setCollegeAddress] = useState("");
+  const [month, setMonth] = useState(new Date().toLocaleDateString("en-IN", { month: "long", year: "numeric" }));
   const [generating, setGenerating] = useState(false);
 
   const handleSubmit = async () => {
@@ -612,14 +663,17 @@ function GenerateAttendanceModal({
       });
 
       // Generate and upload attendance report
-      await generateAndUploadAttendance(
-        intern as Intern & { id: string },
-        {
-          totalInternshipDays: parseInt(totalDays),
-          daysPresent: parseInt(daysPresent),
-          collegeAddress,
-        }
-      );
+      if (brand === "sparks") {
+        await generateAndUploadSparksAttendance(
+          intern as Intern & { id: string },
+          { totalDays: parseInt(totalDays), daysPresent: parseInt(daysPresent), month },
+        );
+      } else {
+        await generateAndUploadAttendance(
+          intern as Intern & { id: string },
+          { totalInternshipDays: parseInt(totalDays), daysPresent: parseInt(daysPresent), collegeAddress },
+        );
+      }
 
       toast.success(`Attendance report generated for ${intern.name}`);
       onGenerated?.(intern.id, intern.name);
@@ -684,13 +738,24 @@ function GenerateAttendanceModal({
         )}
 
         <div>
-          <Label>College Address</Label>
+          <Label>Month / Period</Label>
           <Input
-            value={collegeAddress}
-            onChange={(e) => setCollegeAddress(e.target.value)}
-            placeholder="Enter college address (optional)"
+            value={month}
+            onChange={(e) => setMonth(e.target.value)}
+            placeholder="e.g. June 2026"
           />
         </div>
+
+        {brand === "welbuilt" && (
+          <div>
+            <Label>College Address</Label>
+            <Input
+              value={collegeAddress}
+              onChange={(e) => setCollegeAddress(e.target.value)}
+              placeholder="Enter college address (optional)"
+            />
+          </div>
+        )}
 
         <div className="flex justify-end gap-2 pt-4">
           <Button variant="outline" onClick={onClose}>Cancel</Button>

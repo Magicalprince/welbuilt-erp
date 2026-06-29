@@ -37,6 +37,12 @@ import {
   generateAndUploadOfferLetter,
   bulkGenerateOfferLetters,
 } from "@/services/offerLetterService";
+import {
+  generateAndDownloadSparksOfferLetter,
+  generateAndUploadSparksOfferLetter,
+  bulkGenerateSparksOfferLetters,
+} from "@/services/sparksOfferLetterService";
+import { Building2, Zap } from "lucide-react";
 import { parseDateString } from "@/services/certificateService";
 import { getInternById } from "@/services/internService";
 import { deleteFileFromR2, extractFileKeyFromUrl, getSignedDownloadUrl } from "@/services/r2Service";
@@ -74,6 +80,9 @@ const modeOptions: { value: InternMode; label: string }[] = [
 ];
 
 export default function OfferLettersTab() {
+  // Brand selection
+  const [activeBrand, setActiveBrand] = useState<"welbuilt" | "sparks">("welbuilt");
+
   // State
   const [searchQuery, setSearchQuery] = useState("");
   const [domainFilter, setDomainFilter] = useState<string>("ALL");
@@ -113,13 +122,17 @@ export default function OfferLettersTab() {
     queryClient.invalidateQueries({ queryKey: internQueryKeys.all });
   };
 
-  // Filter interns - only show those with offer letter fields (mode, projectTitle)
+  // Filter interns - only show those with offer letter fields (mode, projectTitle) and matching brand
   const filteredInterns = useMemo(() => {
     if (!interns) return [];
 
     return interns.filter((intern) => {
       // Only show interns that have offer letter data (mode and projectTitle set)
       if (!intern.mode || !intern.projectTitle) return false;
+
+      // Brand filter: default brand is "welbuilt" for old records without brand field
+      const internBrand = intern.brand ?? "welbuilt";
+      if (internBrand !== activeBrand) return false;
 
       const matchesSearch =
         intern.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -133,13 +146,17 @@ export default function OfferLettersTab() {
 
       return matchesSearch && matchesDomain && matchesYear && matchesPayment;
     });
-  }, [interns, searchQuery, domainFilter, yearFilter, paymentFilter]);
+  }, [interns, searchQuery, domainFilter, yearFilter, paymentFilter, activeBrand]);
 
   // Handle offer letter generation
   const handleGenerateOfferLetter = async (intern: Intern & { id: string }) => {
     setGeneratingLetter(intern.id);
     try {
-      await generateAndUploadOfferLetter(intern);
+      if (activeBrand === "sparks") {
+        await generateAndUploadSparksOfferLetter(intern);
+      } else {
+        await generateAndUploadOfferLetter(intern);
+      }
       toast.success(`Offer letter generated for ${intern.name}`);
       if (currentUser?.id) {
         logOfferLetterGenerated(currentUser.id, intern.id, intern.name, currentUser.name).catch(() => {});
@@ -157,7 +174,11 @@ export default function OfferLettersTab() {
   const handleRegenerateOfferLetter = async (intern: Intern & { id: string }) => {
     setGeneratingLetter(intern.id);
     try {
-      await generateAndUploadOfferLetter(intern);
+      if (activeBrand === "sparks") {
+        await generateAndUploadSparksOfferLetter(intern);
+      } else {
+        await generateAndUploadOfferLetter(intern);
+      }
       toast.success(`Offer letter regenerated for ${intern.name}`);
       if (currentUser?.id) {
         logOfferLetterGenerated(currentUser.id, intern.id, intern.name, currentUser.name).catch(() => {});
@@ -174,7 +195,11 @@ export default function OfferLettersTab() {
   // Handle offer letter download
   const handleDownloadOfferLetter = async (intern: Intern) => {
     try {
-      await generateAndDownloadOfferLetter(intern);
+      if (activeBrand === "sparks") {
+        await generateAndDownloadSparksOfferLetter(intern);
+      } else {
+        await generateAndDownloadOfferLetter(intern);
+      }
       toast.success("Offer letter downloaded");
     } catch (error) {
       console.error("Failed to download offer letter:", error);
@@ -245,9 +270,9 @@ export default function OfferLettersTab() {
     setBulkProgress({ current: 0, total: internsToGenerate.length, name: "" });
 
     try {
-      const results = await bulkGenerateOfferLetters(internsToGenerate, (current, total, name) => {
-        setBulkProgress({ current, total, name });
-      });
+      const results = activeBrand === "sparks"
+        ? await bulkGenerateSparksOfferLetters(internsToGenerate, (current, total, name) => { setBulkProgress({ current, total, name }); })
+        : await bulkGenerateOfferLetters(internsToGenerate, (current, total, name) => { setBulkProgress({ current, total, name }); });
 
       const successful = results.filter((r) => r.success).length;
       const failed = results.filter((r) => !r.success).length;
@@ -309,6 +334,32 @@ export default function OfferLettersTab() {
 
   return (
     <div className="space-y-4">
+      {/* Brand toggle */}
+      <div className="flex items-center gap-2">
+        <button
+          onClick={() => setActiveBrand("welbuilt")}
+          className={cn(
+            "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium border transition-colors",
+            activeBrand === "welbuilt"
+              ? "bg-blue-600 text-white border-blue-600"
+              : "bg-transparent text-muted-foreground border-border hover:border-blue-400"
+          )}
+        >
+          <Building2 className="h-3.5 w-3.5" /> WelBuilt AI
+        </button>
+        <button
+          onClick={() => setActiveBrand("sparks")}
+          className={cn(
+            "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium border transition-colors",
+            activeBrand === "sparks"
+              ? "bg-amber-500 text-white border-amber-500"
+              : "bg-transparent text-muted-foreground border-border hover:border-amber-400"
+          )}
+        >
+          <Zap className="h-3.5 w-3.5" /> Sparks AI
+        </button>
+      </div>
+
       {/* Action bar */}
       <div className="flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
         <div className="flex flex-col sm:flex-row gap-2 flex-1">

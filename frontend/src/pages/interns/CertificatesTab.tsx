@@ -47,8 +47,14 @@ import {
   bulkGenerateSparksCertificates,
 } from "@/services/sparksCertificateService";
 import { bulkCreateInterns, getInternById } from "@/services/internService";
+import { bulkGenerateSparksOfferLetters } from "@/services/sparksOfferLetterService";
+import { bulkGenerateSparksAttendance } from "@/services/sparksAttendanceService";
+import { bulkGenerateSparksPayslips } from "@/services/sparksPayslipService";
+import { bulkGenerateOfferLetters } from "@/services/offerLetterService";
+import { bulkGenerateAttendance } from "@/services/attendanceService";
+import { bulkGeneratePayslips } from "@/services/payslipService";
 import { deleteFileFromR2, extractFileKeyFromUrl, getSignedDownloadUrl } from "@/services/r2Service";
-import { logCertificateGenerated } from "@/services/activityLogService";
+import { logCertificateGenerated, logOfferLetterGenerated, logAttendanceGenerated, logPayslipGenerated } from "@/services/activityLogService";
 import { useAuthStore } from "@/store/authStore";
 import toast from "react-hot-toast";
 
@@ -102,6 +108,7 @@ export default function CertificatesTab() {
   const [generatingCert, setGeneratingCert] = useState<string | null>(null);
   const [bulkGenerating, setBulkGenerating] = useState(false);
   const [bulkProgress, setBulkProgress] = useState({ current: 0, total: 0, name: "" });
+  const [allDocsGenerating, setAllDocsGenerating] = useState(false);
 
   // Modal for bulk delete confirmation
   const [bulkDeleteConfirm, setBulkDeleteConfirm] = useState(false);
@@ -292,6 +299,93 @@ export default function CertificatesTab() {
     }
   };
 
+  // Bulk generate ALL 4 docs for selected interns
+  const handleBulkGenerateAllDocs = async () => {
+    const selected = filteredInterns.filter((i) => selectedInterns.includes(i.id)) as Array<Intern & { id: string }>;
+    if (selected.length === 0) { toast.error("No interns selected"); return; }
+
+    setAllDocsGenerating(true);
+    const now = new Date();
+    const month = now.toLocaleDateString("en-IN", { month: "long" });
+    const year = now.getFullYear();
+    const monthStr = `${month} ${year}`;
+
+    try {
+      // 1. Certificates
+      toast.loading("Generating certificates...", { id: "all-docs" });
+      if (activeBrand === "sparks") {
+        await bulkGenerateSparksCertificates(selected);
+      } else {
+        await bulkGenerateCertificates(selected);
+      }
+
+      // 2. Offer letters (only for interns with mode+projectTitle)
+      const withOfferData = selected.filter((i) => i.mode && i.projectTitle);
+      if (withOfferData.length > 0) {
+        toast.loading("Generating offer letters...", { id: "all-docs" });
+        if (activeBrand === "sparks") {
+          await bulkGenerateSparksOfferLetters(withOfferData);
+        } else {
+          await bulkGenerateOfferLetters(withOfferData);
+        }
+      }
+
+      // 3. Attendance
+      toast.loading("Generating attendance reports...", { id: "all-docs" });
+      if (activeBrand === "sparks") {
+        await bulkGenerateSparksAttendance(selected);
+      } else {
+        const withAttendance = selected.map((i) => ({
+          ...i,
+          totalInternshipDays: i.totalInternshipDays ?? 22,
+          daysPresent: i.daysPresent ?? (i.totalInternshipDays ?? 22),
+          collegeAddress: "",
+        }));
+        await bulkGenerateAttendance(withAttendance);
+      }
+
+      // 4. Payslips
+      toast.loading("Generating payslips...", { id: "all-docs" });
+      if (activeBrand === "sparks") {
+        await bulkGenerateSparksPayslips(selected);
+      } else {
+        const formDataMap = new Map(selected.map((i) => [
+          i.id,
+          {
+            referenceNumber: i.referenceNumber || "",
+            numberOfMonths: i.numberOfMonths || 1,
+            paymentType: (i.paymentType || "ONE_TIME") as "MONTHLY" | "ONE_TIME",
+            month,
+            year,
+            collegeAddress: "",
+            monthlyStipend: i.stipend || 0,
+          },
+        ]));
+        await bulkGeneratePayslips(selected, formDataMap);
+      }
+
+      toast.dismiss("all-docs");
+      toast.success(`All 4 documents generated for ${selected.length} intern${selected.length > 1 ? "s" : ""}`);
+
+      if (currentUser?.id) {
+        selected.forEach((i) => {
+          logCertificateGenerated(currentUser.id!, i.id, i.name, currentUser.name).catch(() => {});
+          logOfferLetterGenerated(currentUser.id!, i.id, i.name, currentUser.name).catch(() => {});
+          logAttendanceGenerated(currentUser.id!, i.id, i.name, undefined, currentUser.name).catch(() => {});
+          logPayslipGenerated(currentUser.id!, i.id, i.name, monthStr, currentUser.name).catch(() => {});
+        });
+      }
+
+      setSelectedInterns([]);
+      refreshInterns();
+    } catch (error) {
+      toast.dismiss("all-docs");
+      toast.error("Some documents failed to generate");
+    } finally {
+      setAllDocsGenerating(false);
+    }
+  };
+
   // Toggle selection
   const toggleSelection = (id: string) => {
     setSelectedInterns((prev) =>
@@ -464,17 +558,35 @@ export default function CertificatesTab() {
           <span className="text-sm font-medium text-primary">
             {selectedInterns.length} intern{selectedInterns.length > 1 ? "s" : ""} selected
           </span>
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
             <Button
               variant="outline"
               size="sm"
               onClick={handleBulkGenerate}
-              disabled={bulkGenerating}
+              disabled={bulkGenerating || allDocsGenerating}
             >
               {bulkGenerating ? (
                 <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />Generating ({bulkProgress.current}/{bulkProgress.total})</>
               ) : (
-                <><Award className="h-3.5 w-3.5 mr-1.5" />Generate Certificates</>
+                <><Award className="h-3.5 w-3.5 mr-1.5" />Certificates Only</>
+              )}
+            </Button>
+            <Button
+              size="sm"
+              onClick={handleBulkGenerateAllDocs}
+              disabled={bulkGenerating || allDocsGenerating}
+              className={cn(
+                activeBrand === "sparks"
+                  ? "bg-amber-500 hover:bg-amber-600 text-white"
+                  : "bg-blue-600 hover:bg-blue-700 text-white"
+              )}
+            >
+              {allDocsGenerating ? (
+                <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />Generating all docs...</>
+              ) : (
+                activeBrand === "sparks"
+                  ? <><Zap className="h-3.5 w-3.5 mr-1.5" />Generate All 4 Docs (Sparks)</>
+                  : <><Building2 className="h-3.5 w-3.5 mr-1.5" />Generate All 4 Docs (WelBuilt)</>
               )}
             </Button>
             <Button

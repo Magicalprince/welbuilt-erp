@@ -37,6 +37,11 @@ import {
   generateAndDownloadEmployeePayslip,
   numberToWords,
 } from "@/services/payslipService";
+import {
+  generateAndDownloadSparksPayslip,
+  generateAndUploadSparksPayslip,
+} from "@/services/sparksPayslipService";
+import { Building2, Zap } from "lucide-react";
 import type { EmployeePayslipData } from "@/services/payslipService";
 import { updateIntern } from "@/services/internService";
 import { deleteFileFromR2, extractFileKeyFromUrl, getSignedDownloadUrl } from "@/services/r2Service";
@@ -85,6 +90,7 @@ type Mode = "intern" | "employee";
 
 export default function PayslipTab() {
   const [mode, setMode] = useState<Mode>("intern");
+  const [activeBrand, setActiveBrand] = useState<"welbuilt" | "sparks">("welbuilt");
   const [searchQuery, setSearchQuery] = useState("");
   const [domainFilter, setDomainFilter] = useState<string>("ALL");
   const [yearFilter, setYearFilter] = useState("ALL");
@@ -140,10 +146,13 @@ export default function PayslipTab() {
     queryClient.invalidateQueries({ queryKey: internQueryKeys.all });
   };
 
-  // Filter interns - show ALL interns (shared data from other tabs)
+  // Filter interns by brand + search/domain/year/payment
   const filteredInterns = useMemo(() => {
     if (!interns) return [];
     return interns.filter((intern) => {
+      const internBrand = intern.brand ?? "welbuilt";
+      if (internBrand !== activeBrand) return false;
+
       const matchesSearch =
         intern.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         intern.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -156,20 +165,34 @@ export default function PayslipTab() {
 
       return matchesSearch && matchesDomain && matchesYear && matchesPayment;
     });
-  }, [interns, searchQuery, domainFilter, yearFilter, paymentFilter]);
+  }, [interns, searchQuery, domainFilter, yearFilter, paymentFilter, activeBrand]);
 
   // Handle download (for interns that already have payslip data)
   const handleDownloadPayslip = async (intern: Intern) => {
+    const now = new Date();
+    const month = now.toLocaleString("default", { month: "long" });
+    const year = now.getFullYear();
     try {
-      await generateAndDownloadPayslip(intern, {
-        referenceNumber: intern.referenceNumber || "",
-        numberOfMonths: intern.numberOfMonths || 1,
-        paymentType: intern.paymentType || "ONE_TIME",
-        month: new Date().toLocaleString("default", { month: "long" }),
-        year: new Date().getFullYear(),
-        collegeAddress: "",
-        monthlyStipend: intern.stipend || 0,
-      });
+      if (activeBrand === "sparks") {
+        await generateAndDownloadSparksPayslip(intern, {
+          referenceNumber: intern.referenceNumber || "",
+          numberOfMonths: intern.numberOfMonths || 1,
+          paymentType: intern.paymentType || "ONE_TIME",
+          month,
+          year,
+          monthlyStipend: intern.stipend || 0,
+        });
+      } else {
+        await generateAndDownloadPayslip(intern, {
+          referenceNumber: intern.referenceNumber || "",
+          numberOfMonths: intern.numberOfMonths || 1,
+          paymentType: intern.paymentType || "ONE_TIME",
+          month,
+          year,
+          collegeAddress: "",
+          monthlyStipend: intern.stipend || 0,
+        });
+      }
       toast.success("Payslip downloaded");
     } catch (error) {
       console.error("Failed to download payslip:", error);
@@ -233,6 +256,34 @@ export default function PayslipTab() {
 
   return (
     <div className="space-y-4">
+      {/* Brand toggle (intern mode only) */}
+      {mode === "intern" && (
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setActiveBrand("welbuilt")}
+            className={cn(
+              "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium border transition-colors",
+              activeBrand === "welbuilt"
+                ? "bg-blue-600 text-white border-blue-600"
+                : "bg-transparent text-muted-foreground border-border hover:border-blue-400"
+            )}
+          >
+            <Building2 className="h-3.5 w-3.5" /> WelBuilt AI
+          </button>
+          <button
+            onClick={() => setActiveBrand("sparks")}
+            className={cn(
+              "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium border transition-colors",
+              activeBrand === "sparks"
+                ? "bg-amber-500 text-white border-amber-500"
+                : "bg-transparent text-muted-foreground border-border hover:border-amber-400"
+            )}
+          >
+            <Zap className="h-3.5 w-3.5" /> Sparks AI
+          </button>
+        </div>
+      )}
+
       {/* Mode Toggle */}
       <div className="flex items-center gap-2 p-1 bg-muted rounded-lg w-fit">
         <Button
@@ -533,6 +584,7 @@ export default function PayslipTab() {
           intern={generateIntern}
           onSuccess={refreshInterns}
           setGeneratingSlip={setGeneratingSlip}
+          brand={activeBrand}
           onGenerated={(internId, internName, month) => {
             if (currentUser?.id) {
               logPayslipGenerated(currentUser.id, internId, internName, month, currentUser.name).catch(() => {});
@@ -596,6 +648,7 @@ function GeneratePayslipModal({
   onSuccess,
   setGeneratingSlip,
   onGenerated,
+  brand = "welbuilt",
 }: {
   isOpen: boolean;
   onClose: () => void;
@@ -603,6 +656,7 @@ function GeneratePayslipModal({
   onSuccess: () => void;
   setGeneratingSlip: (id: string | null) => void;
   onGenerated?: (internId: string, internName: string, month: string) => void;
+  brand?: "welbuilt" | "sparks";
 }) {
   const [referenceNumber, setReferenceNumber] = useState(intern.referenceNumber || "");
   const [numberOfMonths, setNumberOfMonths] = useState(intern.numberOfMonths?.toString() || "1");
@@ -633,18 +687,33 @@ function GeneratePayslipModal({
       });
 
       // Generate and upload payslip
-      await generateAndUploadPayslip(
-        intern as Intern & { id: string },
-        {
-          referenceNumber,
-          numberOfMonths: parseInt(numberOfMonths) || 1,
-          paymentType,
-          month,
-          year: parseInt(year),
-          collegeAddress,
-          monthlyStipend: stipendAmount,
-        }
-      );
+      if (brand === "sparks") {
+        await generateAndUploadSparksPayslip(
+          intern as Intern & { id: string },
+          {
+            referenceNumber,
+            numberOfMonths: parseInt(numberOfMonths) || 1,
+            paymentType,
+            month,
+            year: parseInt(year),
+            monthlyStipend: stipendAmount,
+            collegeAddress,
+          },
+        );
+      } else {
+        await generateAndUploadPayslip(
+          intern as Intern & { id: string },
+          {
+            referenceNumber,
+            numberOfMonths: parseInt(numberOfMonths) || 1,
+            paymentType,
+            month,
+            year: parseInt(year),
+            collegeAddress,
+            monthlyStipend: stipendAmount,
+          },
+        );
+      }
 
       toast.success(`Payslip generated for ${intern.name}`);
       onGenerated?.(intern.id, intern.name, `${month} ${year}`);
