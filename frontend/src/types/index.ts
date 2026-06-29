@@ -341,7 +341,8 @@ export const INTERN_MODE_LABELS: Record<InternMode, string> = {
 
 export interface Intern {
   id: string;
-  internId: string; // WBINT001, WBINT002, etc.
+  internId: string; // WBINT001 / SPINT001 etc.
+  brand?: "welbuilt" | "sparks";  // which brand issued this internship
   name: string;
   email: string;
   phone: string;

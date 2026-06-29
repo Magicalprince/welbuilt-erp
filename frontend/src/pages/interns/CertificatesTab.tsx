@@ -739,6 +739,7 @@ function NewCertificateModal({
         startDate,
         endDate,
         issueDate,
+        brand,
       });
 
       toast.success("Intern added successfully");
@@ -1251,6 +1252,7 @@ function BulkImportModal({
         endDate: parseDateString(row.endDate),
         issueDate: row.issueDate ? parseDateString(row.issueDate) : new Date(),
         paymentStatus: (row.paymentStatus?.toUpperCase() === "PAID" ? "PAID" : "UNPAID") as InternPaymentStatus,
+        brand,
       }));
 
       // Create all interns

@@ -10,7 +10,6 @@ import {
   query,
   collection,
   getDocs,
-  limit,
   where,
 } from "./firestore";
 import { db } from "@/config/firebase";
@@ -28,28 +27,25 @@ function convertIntern(data: Record<string, unknown>): Intern {
   } as Intern;
 }
 
-// Generate next intern ID (WBINT001, WBINT002, etc.)
-export async function generateNextInternId(): Promise<string> {
-  const q = query(
-    collection(db, COLLECTIONS.INTERNS),
-    orderBy("createdAt", "desc"),
-    limit(1)
+// Generate next intern ID — WBINT### for WelBuilt, SPINT### for Sparks
+export async function generateNextInternId(brand: "welbuilt" | "sparks" = "welbuilt"): Promise<string> {
+  const prefix = brand === "sparks" ? "SPINT" : "WBINT";
+
+  const snapshot = await getDocs(
+    query(collection(db, COLLECTIONS.INTERNS), orderBy("createdAt", "desc"))
   );
-  const snapshot = await getDocs(q);
 
-  if (snapshot.empty) {
-    return "WBINT001";
-  }
+  // Find the highest number for this brand's prefix
+  let maxNum = 0;
+  snapshot.docs.forEach((doc) => {
+    const id = doc.data().internId as string;
+    if (id?.startsWith(prefix)) {
+      const n = parseInt(id.replace(prefix, ""), 10);
+      if (!isNaN(n) && n > maxNum) maxNum = n;
+    }
+  });
 
-  const lastIntern = snapshot.docs[0].data();
-  const lastId = lastIntern.internId as string;
-
-  // Extract number from WBINT001 format
-  const numPart = parseInt(lastId.replace("WBINT", ""), 10);
-  const nextNum = numPart + 1;
-
-  // Pad with zeros to maintain format
-  return `WBINT${nextNum.toString().padStart(3, "0")}`;
+  return `${prefix}${(maxNum + 1).toString().padStart(3, "0")}`;
 }
 
 // Get all interns
@@ -111,11 +107,14 @@ export async function createIntern(data: {
   endDate: Date;
   issueDate: Date;
   paymentStatus: InternPaymentStatus;
+  brand?: "welbuilt" | "sparks";
 }): Promise<string> {
-  const internId = await generateNextInternId();
+  const brand = data.brand ?? "welbuilt";
+  const internId = await generateNextInternId(brand);
 
   return createDocument(COLLECTIONS.INTERNS, {
     ...data,
+    brand,
     internId,
     startDate: toTimestamp(data.startDate),
     endDate: toTimestamp(data.endDate),
@@ -184,19 +183,24 @@ export async function bulkCreateInterns(
     endDate: Date;
     issueDate: Date;
     paymentStatus: InternPaymentStatus;
+    brand?: "welbuilt" | "sparks";
   }>
 ): Promise<string[]> {
   const ids: string[] = [];
 
-  // Get the starting intern ID
-  let nextId = await generateNextInternId();
-  let numPart = parseInt(nextId.replace("WBINT", ""), 10);
+  // Determine brand from first row (all rows in a bulk import share the same brand)
+  const brand = internsData[0]?.brand ?? "welbuilt";
+  const prefix = brand === "sparks" ? "SPINT" : "WBINT";
+
+  const firstId = await generateNextInternId(brand);
+  let numPart = parseInt(firstId.replace(prefix, ""), 10);
 
   for (const data of internsData) {
-    const internId = `WBINT${numPart.toString().padStart(3, "0")}`;
+    const internId = `${prefix}${numPart.toString().padStart(3, "0")}`;
 
     const id = await createDocument(COLLECTIONS.INTERNS, {
       ...data,
+      brand,
       internId,
       startDate: toTimestamp(data.startDate),
       endDate: toTimestamp(data.endDate),

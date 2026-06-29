@@ -58,6 +58,7 @@ export function useCreateIntern() {
       endDate: Date;
       issueDate: Date;
       paymentStatus: InternPaymentStatus;
+      brand?: "welbuilt" | "sparks";
     }) => createIntern(data),
     onSuccess: (internId, variables) => {
       queryClient.invalidateQueries({ queryKey: internQueryKeys.all });
