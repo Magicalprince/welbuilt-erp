@@ -84,20 +84,58 @@ export async function generateSparksCertificatePdf(data: SparksCertificateData):
   // ── Background ──────────────────────────────────────────────────────────
   page.drawRectangle({ x: 0, y: 0, width: W, height: H, color: beige });
 
-  // ── Top-right geometric block (black triangle + gold stripe) ────────────
-  // Main black polygon (top-right corner trapezoid)
-  page.drawRectangle({ x: 480, y: H - 220, width: W - 480, height: 220, color: black });
-  // Diagonal cut on left edge: draw a beige triangle to "cut" the corner
-  // We approximate the angled left edge with a thin gold bar first
-  page.drawRectangle({ x: 460, y: H - 200, width: 30, height: 200, color: gold });
-  page.drawRectangle({ x: 480, y: H - 220, width: 15, height: 220, color: gold });
-  // Second angled cut creates the V-shape bottom indent
-  page.drawRectangle({ x: 530, y: H - 260, width: W - 530, height: 45, color: black });
-  page.drawRectangle({ x: 530, y: H - 260, width: 15, height: 45, color: gold });
-  // Small gold accent line at very top
-  page.drawRectangle({ x: 0, y: H - 4, width: W, height: 4, color: gold });
-  // Bottom gold stripe
-  page.drawRectangle({ x: 0, y: 0, width: W, height: 8, color: gold });
+  // ── Top-right geometric decoration (matching Canva design exactly) ───────
+  //
+  // Canva page dimensions: 1123 x 794px  →  PDF: 841.89 x 595.28 pt
+  // Scale factors: sx = 841.89/1123 ≈ 0.7497,  sy = 595.28/794 ≈ 0.7497
+  // (square aspect, same factor both axes)
+  //
+  // The decoration consists of (in PDF coordinate space, Y=0 at bottom):
+  //
+  //  SHAPE 1 – Large black trapezoid (top-right corner)
+  //    Canva coords (px, Y from top): top-left≈(530,0), top-right=(1123,0),
+  //    bottom-right=(1123,330), bottom-left=(680,330)  → diagonal left edge
+  //    PDF (pt, Y from bottom):
+  //      TL=(397, 595), TR=(842, 595), BR=(842, 347), BL=(510, 347)
+  //
+  //  SHAPE 2 – Gold diagonal stripe across the trapezoid
+  //    A parallelogram running top-left to bottom-right through the black area
+  //    Canva: top stripe from (530,0)→(720,0) slanting to (842,330)→(650,330)
+  //    PDF:   (397,595)→(540,595) → (631,347)→(488,347)
+  //
+  //  SHAPE 3 – Small black triangle (lower chevron below gold stripe)
+  //    Canva: (650,280)→(842,280)→(842,380)
+  //    PDF:   (488,385)→(842,385)→(842,310) — right-angle triangle at bottom-right
+  //
+  // pdf-lib drawSvgPath: SVG coords with Y=0 at TOP of page
+  // So we transform: svgY = H - pdfY
+
+  // Shape 1: large black trapezoid — SVG path (Y from top of page)
+  // Points in SVG space (Y=0 at top): TL(397,0) TR(842,0) BR(842,248) BL(510,248)
+  page.drawSvgPath("M 397 0 L 842 0 L 842 248 L 510 248 Z", {
+    color: black,
+    borderColor: black,
+    borderWidth: 0,
+  });
+
+  // Shape 2: gold diagonal stripe — parallelogram cutting across the black area
+  // SVG points: (397,0) (540,0) (631,248) (488,248)
+  page.drawSvgPath("M 397 0 L 540 0 L 631 248 L 488 248 Z", {
+    color: gold,
+    borderColor: gold,
+    borderWidth: 0,
+  });
+
+  // Shape 3: small black triangle (lower-right chevron below the gold stripe)
+  // SVG points: (488,210) (842,210) (842,285)
+  page.drawSvgPath("M 488 210 L 842 210 L 842 285 Z", {
+    color: black,
+    borderColor: black,
+    borderWidth: 0,
+  });
+
+  // Bottom gold bar
+  page.drawRectangle({ x: 0, y: 0, width: W, height: 7, color: gold });
 
   // ── Logo (top-left) ─────────────────────────────────────────────────────
   const logoBytes = await fetchImageBytes("/images/sparks/logo.png");
