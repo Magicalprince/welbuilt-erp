@@ -98,8 +98,8 @@ export async function generateSparksOfferLetterPdf(data: SparksOfferLetterData):
   const SB = 72; // sidebar width
   page.drawRectangle({ x: 0, y: 0, width: SB, height: H, color: teal });
 
-  // Gold accent line on sidebar right edge — only below the header
-  page.drawRectangle({ x: SB, y: 0, width: 3, height: H - 80, color: gold });
+  // Gold accent line on sidebar right edge — only below the header, not touching it
+  page.drawRectangle({ x: SB, y: 0, width: 3, height: H - 83, color: gold });
 
   const logoBytes = await fetchBytes("/images/sparks/logo.png");
 
@@ -144,7 +144,7 @@ export async function generateSparksOfferLetterPdf(data: SparksOfferLetterData):
   let Y = H - 36;
 
   // ── Top header bar (teal strip at top) ────────────────────────────────────
-  page.drawRectangle({ x: SB + 3, y: H - 80, width: W - SB - 3, height: 80, color: teal });
+  page.drawRectangle({ x: SB, y: H - 80, width: W - SB, height: 80, color: teal });
 
   // Logo on right side of header
   if (logoBytes) {
@@ -323,7 +323,7 @@ export async function generateSparksOfferLetterPdf(data: SparksOfferLetterData):
 
   // ── Footer ────────────────────────────────────────────────────────────────
   const footerY = 36;
-  page.drawRectangle({ x: SB + 3, y: footerY - 4, width: W - SB - 3, height: 0.75, color: gold });
+  page.drawRectangle({ x: SB, y: footerY - 4, width: W - SB, height: 0.75, color: gold });
   page.drawText(
     "This is a computer-generated document. Sparks AI Solutions is a brand under WelBuilt AI Solutions Pvt. Ltd.",
     { x: CX, y: footerY - 14, size: 6.5, font: regular, color: mid, opacity: 0.7 },
