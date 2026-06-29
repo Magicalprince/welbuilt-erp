@@ -84,55 +84,42 @@ export async function generateSparksCertificatePdf(data: SparksCertificateData):
   // ── Background ──────────────────────────────────────────────────────────
   page.drawRectangle({ x: 0, y: 0, width: W, height: H, color: beige });
 
-  // ── Top-right geometric decoration (matching Canva design exactly) ───────
+  // ── Top-right geometric decoration ──────────────────────────────────────
   //
-  // Canva page dimensions: 1123 x 794px  →  PDF: 841.89 x 595.28 pt
-  // Scale factors: sx = 841.89/1123 ≈ 0.7497,  sy = 595.28/794 ≈ 0.7497
-  // (square aspect, same factor both axes)
+  // pdf-lib drawSvgPath uses PDF coordinates: origin at BOTTOM-LEFT, Y up.
+  // All points below are in PDF pt (x from left, y from bottom).
   //
-  // The decoration consists of (in PDF coordinate space, Y=0 at bottom):
+  // Design (mirroring Canva page 11):
+  //   Shape 1: large black trapezoid — top-right corner with diagonal left edge
+  //     TL=(397,H) TR=(W,H) BR=(W,H-248) BL=(510,H-248)
+  //   Shape 2: gold parallelogram stripe cutting diagonally across the black
+  //     (397,H) → (540,H) → (488,H-248) → (397,H-143)
+  //   Shape 3: small black triangle — lower wedge below gold stripe
+  //     (488,H-210) → (W,H-210) → (W,H-285)
   //
-  //  SHAPE 1 – Large black trapezoid (top-right corner)
-  //    Canva coords (px, Y from top): top-left≈(530,0), top-right=(1123,0),
-  //    bottom-right=(1123,330), bottom-left=(680,330)  → diagonal left edge
-  //    PDF (pt, Y from bottom):
-  //      TL=(397, 595), TR=(842, 595), BR=(842, 347), BL=(510, 347)
-  //
-  //  SHAPE 2 – Gold diagonal stripe across the trapezoid
-  //    A parallelogram running top-left to bottom-right through the black area
-  //    Canva: top stripe from (530,0)→(720,0) slanting to (842,330)→(650,330)
-  //    PDF:   (397,595)→(540,595) → (631,347)→(488,347)
-  //
-  //  SHAPE 3 – Small black triangle (lower chevron below gold stripe)
-  //    Canva: (650,280)→(842,280)→(842,380)
-  //    PDF:   (488,385)→(842,385)→(842,310) — right-angle triangle at bottom-right
-  //
-  // pdf-lib drawSvgPath: SVG coords with Y=0 at TOP of page
-  // So we transform: svgY = H - pdfY
+  // drawSvgPath "M x y L x y ..." uses the SAME coordinate system as page
+  // (bottom-left origin) when no transform is provided.
 
-  // Shape 1: large black trapezoid — SVG path (Y from top of page)
-  // Points in SVG space (Y=0 at top): TL(397,0) TR(842,0) BR(842,248) BL(510,248)
-  page.drawSvgPath("M 397 0 L 842 0 L 842 248 L 510 248 Z", {
-    color: black,
-    borderColor: black,
-    borderWidth: 0,
-  });
+  // Shape 1: large black trapezoid (top-right corner)
+  page.drawSvgPath(
+    `M ${397} ${H} L ${W} ${H} L ${W} ${H - 248} L ${510} ${H - 248} Z`,
+    { color: black, borderWidth: 0 },
+  );
 
-  // Shape 2: gold diagonal stripe — parallelogram cutting across the black area
-  // SVG points: (397,0) (540,0) (631,248) (488,248)
-  page.drawSvgPath("M 397 0 L 540 0 L 631 248 L 488 248 Z", {
-    color: gold,
-    borderColor: gold,
-    borderWidth: 0,
-  });
+  // Shape 2: gold diagonal parallelogram stripe
+  page.drawSvgPath(
+    `M ${397} ${H} L ${540} ${H} L ${488} ${H - 248} L ${345} ${H - 248} Z`,
+    { color: gold, borderWidth: 0 },
+  );
 
-  // Shape 3: small black triangle (lower-right chevron below the gold stripe)
-  // SVG points: (488,210) (842,210) (842,285)
-  page.drawSvgPath("M 488 210 L 842 210 L 842 285 Z", {
-    color: black,
-    borderColor: black,
-    borderWidth: 0,
-  });
+  // Shape 3: smaller black triangle — lower-right chevron
+  page.drawSvgPath(
+    `M ${488} ${H - 210} L ${W} ${H - 210} L ${W} ${H - 285} Z`,
+    { color: black, borderWidth: 0 },
+  );
+
+  // Top thin gold line
+  page.drawRectangle({ x: 0, y: H - 5, width: W, height: 5, color: gold });
 
   // Bottom gold bar
   page.drawRectangle({ x: 0, y: 0, width: W, height: 7, color: gold });
@@ -268,16 +255,16 @@ export async function generateSparksCertificatePdf(data: SparksCertificateData):
     });
   }
 
-  // Seal image (overlapping with signature, slightly right)
+  // Seal image — use natural aspect ratio scaled to target height
   const sealBytes = await fetchImageBytes("/images/sparks/seal.png");
   if (sealBytes) {
     const sealImg = await pdfDoc.embedPng(sealBytes);
-    const sealSize = 90;
+    const sealDims = sealImg.scale(0.22);   // scale uniformly — no squish
     page.drawImage(sealImg, {
       x: sigAreaX + 110,
-      y: sigAreaY + 20,
-      width: sealSize,
-      height: sealSize,
+      y: sigAreaY + 18,
+      width: sealDims.width,
+      height: sealDims.height,
       opacity: 0.92,
     });
   }
@@ -304,14 +291,6 @@ export async function generateSparksCertificatePdf(data: SparksCertificateData):
   page.drawText(`Date of Issue: ${formatLong(data.issueDate)}`, {
     x: 36, y: 28,
     size: 9, font: regular, color: navy,
-  });
-
-  // ── Certificate ID watermark (light, rotated) ────────────────────────────
-  const certId = `SPARKS-${data.name.replace(/\s+/g, "").slice(0, 6).toUpperCase()}-${data.startDate.getFullYear()}`;
-  page.drawText(certId, {
-    x: 160, y: 22,
-    size: 8, font: regular,
-    color: rgb(0.6, 0.55, 0.45),
   });
 
   return pdfDoc.save();
