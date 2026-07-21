@@ -199,6 +199,17 @@ export interface Withdrawal {
   createdAt: Date;
 }
 
+// Repayment Types — a founder paying back part of their withdrawn amount
+export interface Repayment {
+  id: string;
+  founderId: string;
+  founder?: User;
+  amount: number;
+  date: Date;
+  notes?: string;
+  createdAt: Date;
+}
+
 // Note Types
 export interface NoteCheckpoint {
   id: string;

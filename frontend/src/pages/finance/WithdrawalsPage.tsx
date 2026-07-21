@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { Link } from "react-router-dom";
-import { ArrowLeft, Plus, Wallet, Loader2 } from "lucide-react";
+import { ArrowLeft, Plus, ArrowDownCircle, ArrowUpCircle, Loader2 } from "lucide-react";
 import {
   Button,
   Card,
@@ -21,11 +21,23 @@ import {
   useFounderFinances,
   useWithdrawals,
   useCreateWithdrawal,
+  useRepayments,
+  useCreateRepayment,
 } from "@/hooks/useFirestore";
 import toast from "react-hot-toast";
 
+type LedgerEntry = {
+  id: string;
+  kind: "WITHDRAWAL" | "REPAYMENT";
+  founderId: string;
+  amount: number;
+  date: Date;
+  notes?: string;
+};
+
 export default function WithdrawalsPage() {
   const [showModal, setShowModal] = useState(false);
+  const [modalMode, setModalMode] = useState<"WITHDRAW" | "REPAY">("WITHDRAW");
   const [selectedFounder, setSelectedFounder] = useState("");
   const [amount, setAmount] = useState("");
   const [notes, setNotes] = useState("");
@@ -33,7 +45,9 @@ export default function WithdrawalsPage() {
   const { data: founders } = useFounders();
   const { data: founderFinances, isLoading: loadingFinances } = useFounderFinances();
   const { data: withdrawals, isLoading: loadingWithdrawals } = useWithdrawals();
+  const { data: repayments, isLoading: loadingRepayments } = useRepayments();
   const createWithdrawalMutation = useCreateWithdrawal();
+  const createRepaymentMutation = useCreateRepayment();
 
   const founderOptions = useMemo(() => {
     if (!founders) return [];
@@ -46,8 +60,44 @@ export default function WithdrawalsPage() {
     return finance?.availableBalance || 0;
   }, [selectedFounder, founderFinances]);
 
-  const handleOpenModal = () => {
-    setSelectedFounder("");
+  // Net amount currently owed by the selected founder — the repayment cap
+  const selectedFounderOwed = useMemo(() => {
+    if (!selectedFounder || !founderFinances) return 0;
+    const finance = founderFinances.find((f) => f.id === selectedFounder);
+    return finance?.totalWithdrawals || 0;
+  }, [selectedFounder, founderFinances]);
+
+  const modalCap = modalMode === "WITHDRAW" ? selectedFounderBalance : selectedFounderOwed;
+
+  // Merge withdrawals + repayments into one chronological ledger
+  const ledger = useMemo<LedgerEntry[]>(() => {
+    const entries: LedgerEntry[] = [];
+    withdrawals?.forEach((w) =>
+      entries.push({
+        id: w.id,
+        kind: "WITHDRAWAL",
+        founderId: w.founderId,
+        amount: w.amount,
+        date: w.createdAt,
+        notes: w.notes,
+      })
+    );
+    repayments?.forEach((r) =>
+      entries.push({
+        id: r.id,
+        kind: "REPAYMENT",
+        founderId: r.founderId,
+        amount: r.amount,
+        date: r.createdAt,
+        notes: r.notes,
+      })
+    );
+    return entries.sort((a, b) => b.date.getTime() - a.date.getTime());
+  }, [withdrawals, repayments]);
+
+  const handleOpenModal = (mode: "WITHDRAW" | "REPAY", founderId?: string) => {
+    setModalMode(mode);
+    setSelectedFounder(founderId || "");
     setAmount("");
     setNotes("");
     setShowModal(true);
@@ -59,26 +109,43 @@ export default function WithdrawalsPage() {
       return;
     }
 
-    const withdrawalAmount = Number(amount);
-    if (withdrawalAmount > selectedFounderBalance) {
-      toast.error("Withdrawal amount exceeds available balance");
+    const enteredAmount = Number(amount);
+    if (enteredAmount > modalCap) {
+      toast.error(
+        modalMode === "WITHDRAW"
+          ? "Withdrawal amount exceeds available balance"
+          : "Repayment amount exceeds the outstanding withdrawn balance"
+      );
       return;
     }
 
     try {
-      await createWithdrawalMutation.mutateAsync({
-        founderId: selectedFounder,
-        amount: withdrawalAmount,
-        date: new Date(),
-        notes: notes.trim() || undefined,
-      });
-      toast.success("Withdrawal recorded successfully");
+      if (modalMode === "WITHDRAW") {
+        await createWithdrawalMutation.mutateAsync({
+          founderId: selectedFounder,
+          amount: enteredAmount,
+          date: new Date(),
+          notes: notes.trim() || undefined,
+        });
+        toast.success("Withdrawal recorded successfully");
+      } else {
+        await createRepaymentMutation.mutateAsync({
+          founderId: selectedFounder,
+          amount: enteredAmount,
+          date: new Date(),
+          notes: notes.trim() || undefined,
+        });
+        toast.success("Repayment recorded successfully");
+      }
       setShowModal(false);
     } catch (error) {
-      console.error("Error creating withdrawal:", error);
-      toast.error("Failed to record withdrawal");
+      console.error(`Error creating ${modalMode.toLowerCase()}:`, error);
+      const message = error instanceof Error ? error.message : `Failed to record ${modalMode === "WITHDRAW" ? "withdrawal" : "repayment"}`;
+      toast.error(message);
     }
   };
+
+  const isSubmitting = createWithdrawalMutation.isPending || createRepaymentMutation.isPending;
 
   // Loading states are checked individually in the JSX
 
@@ -94,13 +161,19 @@ export default function WithdrawalsPage() {
           </Link>
           <div>
             <h1 className="text-3xl font-bold">Founder Withdrawals</h1>
-            <p className="text-muted-foreground">Record and track founder equity withdrawals</p>
+            <p className="text-muted-foreground">Record and track founder equity withdrawals and repayments</p>
           </div>
         </div>
-        <Button onClick={handleOpenModal}>
-          <Plus className="h-4 w-4 mr-2" />
-          Record Withdrawal
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => handleOpenModal("REPAY")}>
+            <ArrowDownCircle className="h-4 w-4 mr-2" />
+            Record Repayment
+          </Button>
+          <Button onClick={() => handleOpenModal("WITHDRAW")}>
+            <Plus className="h-4 w-4 mr-2" />
+            Record Withdrawal
+          </Button>
+        </div>
       </div>
 
       {/* Founder Balances */}
@@ -128,13 +201,32 @@ export default function WithdrawalsPage() {
                     <span>{formatCurrency(founder.earnedShare)}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">Withdrawn</span>
+                    <span className="text-muted-foreground">Net Withdrawn</span>
                     <span className="text-destructive">-{formatCurrency(founder.totalWithdrawals)}</span>
                   </div>
                   <div className="flex justify-between font-medium pt-1 border-t">
                     <span>Available</span>
                     <span className="text-green-600">{formatCurrency(founder.availableBalance)}</span>
                   </div>
+                </div>
+                <div className="flex gap-2 mt-3">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="flex-1"
+                    onClick={() => handleOpenModal("REPAY", founder.id)}
+                    disabled={founder.totalWithdrawals <= 0}
+                  >
+                    Repay
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="flex-1"
+                    onClick={() => handleOpenModal("WITHDRAW", founder.id)}
+                  >
+                    Withdraw
+                  </Button>
                 </div>
               </CardContent>
             </Card>
@@ -148,43 +240,50 @@ export default function WithdrawalsPage() {
         </Card>
       )}
 
-      {/* Withdrawal History */}
+      {/* Withdrawal & Repayment Ledger */}
       <Card>
         <CardHeader>
-          <CardTitle>Withdrawal History</CardTitle>
+          <CardTitle>Withdrawal & Repayment History</CardTitle>
         </CardHeader>
         <CardContent>
-          {loadingWithdrawals ? (
+          {loadingWithdrawals || loadingRepayments ? (
             <div className="space-y-3">
               {[...Array(5)].map((_, i) => (
                 <Skeleton key={i} className="h-16 w-full" />
               ))}
             </div>
-          ) : withdrawals && withdrawals.length > 0 ? (
+          ) : ledger.length > 0 ? (
             <div className="space-y-3">
-              {withdrawals.map((withdrawal) => {
-                const founder = founders?.find((f) => f.id === withdrawal.founderId);
+              {ledger.map((entry) => {
+                const founder = founders?.find((f) => f.id === entry.founderId);
+                const isRepayment = entry.kind === "REPAYMENT";
                 return (
                   <div
-                    key={withdrawal.id}
+                    key={`${entry.kind}-${entry.id}`}
                     className="flex items-center justify-between p-4 rounded-lg border"
                   >
                     <div className="flex items-center gap-3">
-                      <Wallet className="h-5 w-5 text-muted-foreground" />
+                      {isRepayment ? (
+                        <ArrowDownCircle className="h-5 w-5 text-green-600" />
+                      ) : (
+                        <ArrowUpCircle className="h-5 w-5 text-muted-foreground" />
+                      )}
                       <div>
                         <p className="font-medium">{founder?.name || "Unknown"}</p>
                         <p className="text-sm text-muted-foreground">
-                          {formatDate(withdrawal.createdAt)}
+                          {formatDate(entry.date)}
                         </p>
-                        {withdrawal.notes && (
-                          <p className="text-sm text-muted-foreground">{withdrawal.notes}</p>
+                        {entry.notes && (
+                          <p className="text-sm text-muted-foreground">{entry.notes}</p>
                         )}
                       </div>
                     </div>
                     <div className="text-right">
-                      <p className="font-semibold text-lg">{formatCurrency(withdrawal.amount)}</p>
-                      <Badge variant={withdrawal.status === "APPROVED" ? "success" : withdrawal.status === "REJECTED" ? "destructive" : "secondary"}>
-                        {withdrawal.status}
+                      <p className={`font-semibold text-lg ${isRepayment ? "text-green-600" : ""}`}>
+                        {isRepayment ? "+" : "-"}{formatCurrency(entry.amount)}
+                      </p>
+                      <Badge variant={isRepayment ? "success" : "secondary"}>
+                        {isRepayment ? "Repayment" : "Withdrawal"}
                       </Badge>
                     </div>
                   </div>
@@ -192,13 +291,17 @@ export default function WithdrawalsPage() {
               })}
             </div>
           ) : (
-            <p className="text-center py-8 text-muted-foreground">No withdrawals recorded yet</p>
+            <p className="text-center py-8 text-muted-foreground">No withdrawals or repayments recorded yet</p>
           )}
         </CardContent>
       </Card>
 
-      {/* Withdrawal Modal */}
-      <Modal isOpen={showModal} onClose={() => setShowModal(false)} title="Record Withdrawal">
+      {/* Withdrawal / Repayment Modal */}
+      <Modal
+        isOpen={showModal}
+        onClose={() => setShowModal(false)}
+        title={modalMode === "WITHDRAW" ? "Record Withdrawal" : "Record Repayment"}
+      >
         <div className="space-y-4">
           <div className="space-y-2">
             <Label>Founder *</Label>
@@ -210,7 +313,11 @@ export default function WithdrawalsPage() {
             />
             {selectedFounder && (
               <p className="text-sm text-muted-foreground">
-                Available balance: <span className="text-green-600 font-medium">{formatCurrency(selectedFounderBalance)}</span>
+                {modalMode === "WITHDRAW" ? (
+                  <>Available balance: <span className="text-green-600 font-medium">{formatCurrency(selectedFounderBalance)}</span></>
+                ) : (
+                  <>Outstanding withdrawn: <span className="text-destructive font-medium">{formatCurrency(selectedFounderOwed)}</span></>
+                )}
               </p>
             )}
           </div>
@@ -220,8 +327,8 @@ export default function WithdrawalsPage() {
             <Input
               type="number"
               min="0"
-              max={selectedFounderBalance}
-              placeholder="Enter withdrawal amount"
+              max={modalCap}
+              placeholder={modalMode === "WITHDRAW" ? "Enter withdrawal amount" : "Enter repayment amount"}
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
             />
@@ -242,15 +349,15 @@ export default function WithdrawalsPage() {
             </Button>
             <Button
               onClick={handleSubmit}
-              disabled={!selectedFounder || !amount || Number(amount) <= 0 || createWithdrawalMutation.isPending}
+              disabled={!selectedFounder || !amount || Number(amount) <= 0 || isSubmitting}
             >
-              {createWithdrawalMutation.isPending ? (
+              {isSubmitting ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                   Recording...
                 </>
               ) : (
-                "Record Withdrawal"
+                modalMode === "WITHDRAW" ? "Record Withdrawal" : "Record Repayment"
               )}
             </Button>
           </div>

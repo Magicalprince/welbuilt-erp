@@ -30,6 +30,7 @@ export const COLLECTIONS = {
   EXPENSES: "expenses",
   INCOMES: "incomes",
   WITHDRAWALS: "withdrawals",
+  REPAYMENTS: "repayments",
   NOTES: "notes",
   COMMENTS: "comments",
   DOCUMENTS: "documents",

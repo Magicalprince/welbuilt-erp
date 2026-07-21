@@ -113,23 +113,29 @@ export async function getFounderFinances(): Promise<{
       return [];
     }
 
-    // Get total revenue and expenses from settings or calculate
-    const { getTotalRevenue, getTotalExpenses } = await import("./financeService");
+    // Get total revenue and operational expenses (excludes founder withdrawals —
+    // withdrawals are a distribution of profit, not a cost that should shrink it)
+    const { getTotalRevenue, getOperationalExpenses } = await import("./financeService");
     const totalRevenue = await getTotalRevenue();
-    const totalExpenses = await getTotalExpenses();
-    const netProfit = totalRevenue - totalExpenses;
+    const operationalExpenses = await getOperationalExpenses();
+    const netProfit = totalRevenue - operationalExpenses;
 
-    // Get withdrawals for each founder
+    // Get withdrawals and repayments for each founder
     const { getWithdrawalsByFounder } = await import("./withdrawalService");
+    const { getTotalRepaymentsByFounder } = await import("./repaymentService");
 
     const founderFinances = await Promise.all(
       founders.map(async (founder) => {
         try {
-          const withdrawals = await getWithdrawalsByFounder(founder.id);
-          // Only count APPROVED withdrawals toward founder balance
-          const totalWithdrawals = withdrawals
+          const [withdrawals, totalRepaid] = await Promise.all([
+            getWithdrawalsByFounder(founder.id),
+            getTotalRepaymentsByFounder(founder.id),
+          ]);
+          // Only count APPROVED withdrawals toward founder balance, net of repayments
+          const totalWithdrawn = withdrawals
             .filter((w) => w.status === "APPROVED")
             .reduce((sum, w) => sum + w.amount, 0);
+          const totalWithdrawals = totalWithdrawn - totalRepaid;
           const earnedShare = netProfit * (founder.equityPercent / 100);
 
           return {

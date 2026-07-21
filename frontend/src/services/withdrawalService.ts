@@ -12,6 +12,7 @@ import {
 import type { Withdrawal, WithdrawalStatus } from "@/types";
 import { createExpense } from "./financeService";
 import { getUserById } from "./userService";
+import { logWithdrawalRequested, logWithdrawalApproved } from "./activityLogService";
 
 export interface FirestoreWithdrawal {
   id: string;
@@ -113,6 +114,10 @@ export async function createWithdrawal(
     paidBy: "COMPANY",
     notes: data.notes || `Withdrawal by ${founderName}`,
   });
+
+  // Withdrawals are created already-approved, so log both events for the audit trail
+  await logWithdrawalRequested(data.founderId, withdrawalId, data.amount);
+  await logWithdrawalApproved(data.founderId, withdrawalId, data.amount, founderName);
 
   return withdrawalId;
 }

@@ -11,6 +11,7 @@ import type {
   Income,
   IncomeCategory,
   Withdrawal,
+  Repayment,
   Note,
   Document,
   DocumentType,
@@ -76,6 +77,10 @@ export const queryKeys = {
   withdrawal: (id: string) => ["withdrawals", id] as const,
   withdrawalsByFounder: (founderId: string) => ["withdrawals", "founder", founderId] as const,
   pendingWithdrawals: ["withdrawals", "pending"] as const,
+
+  // Repayments
+  repayments: ["repayments"] as const,
+  repaymentsByFounder: (founderId: string) => ["repayments", "founder", founderId] as const,
 
   // Notes
   notes: ["notes"] as const,
@@ -849,6 +854,47 @@ export function useApproveWithdrawal() {
       queryClient.invalidateQueries({ queryKey: queryKeys.founderFinances });
       queryClient.invalidateQueries({ queryKey: queryKeys.financialSummary });
       queryClient.invalidateQueries({ queryKey: queryKeys.pendingWithdrawals });
+    },
+  });
+}
+
+// ============================================
+// Repayment Hooks
+// ============================================
+export function useRepayments() {
+  return useQuery({
+    queryKey: queryKeys.repayments,
+    queryFn: async () => {
+      const { getAllRepayments } = await import("@/services/repaymentService");
+      return getAllRepayments();
+    },
+  });
+}
+
+export function useRepaymentsByFounder(founderId: string) {
+  return useQuery({
+    queryKey: queryKeys.repaymentsByFounder(founderId),
+    queryFn: async () => {
+      const { getRepaymentsByFounder } = await import("@/services/repaymentService");
+      return getRepaymentsByFounder(founderId);
+    },
+    enabled: !!founderId,
+  });
+}
+
+export function useCreateRepayment() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (data: Omit<Repayment, "id" | "createdAt">) => {
+      const { createRepayment } = await import("@/services/repaymentService");
+      return createRepayment(data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.repayments });
+      queryClient.invalidateQueries({ queryKey: queryKeys.withdrawals });
+      queryClient.invalidateQueries({ queryKey: queryKeys.founderFinances });
+      queryClient.invalidateQueries({ queryKey: queryKeys.financialSummary });
     },
   });
 }

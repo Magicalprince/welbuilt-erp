@@ -126,18 +126,22 @@ export async function getOperationalExpenses(): Promise<number> {
     .reduce((sum, exp) => sum + exp.amount, 0);
 }
 
-// Get total founder withdrawals from both withdrawals collection and expenses
-// This ensures we capture all withdrawals, including those created before the expense tracking was added
+// Get total founder withdrawals, net of repayments.
+// This is what's actually still out of the company bank account.
 export async function getTotalFounderWithdrawals(): Promise<number> {
   const { getAllWithdrawals } = await import("./withdrawalService");
+  const { getTotalRepayments } = await import("./repaymentService");
 
   // Get approved withdrawals from withdrawals collection (source of truth)
-  const withdrawals = await getAllWithdrawals();
+  const [withdrawals, totalRepayments] = await Promise.all([
+    getAllWithdrawals(),
+    getTotalRepayments(),
+  ]);
   const totalFromWithdrawals = withdrawals
     .filter((w) => w.status === "APPROVED")
     .reduce((sum, w) => sum + w.amount, 0);
 
-  return totalFromWithdrawals;
+  return totalFromWithdrawals - totalRepayments;
 }
 
 // Get net profit (Revenue - Operational Expenses, NOT including withdrawals)
@@ -154,66 +158,6 @@ export async function getCompanyBankBalance(): Promise<number> {
   const netProfit = await getNetProfit();
   const totalWithdrawals = await getTotalFounderWithdrawals();
   return netProfit - totalWithdrawals;
-}
-
-// Get founder equity details
-export async function getFounderEquityDetails(): Promise<{
-  founders: Array<{
-    founderId: string;
-    name: string;
-    equityPercent: number;
-    equityShare: number; // Their share of net profit based on equity %
-    totalWithdrawn: number; // Total amount withdrawn
-    remainingShare: number; // equityShare - totalWithdrawn
-  }>;
-  totalNetProfit: number;
-}> {
-  const { FOUNDERS } = await import("@/lib/founders");
-  const { getAllWithdrawals } = await import("./withdrawalService");
-  const { getDocuments: getDocs } = await import("./firestore");
-
-  // Get net profit (excluding founder withdrawal expenses for equity calculation)
-  const expenses = await getAllExpenses();
-  const nonWithdrawalExpenses = expenses
-    .filter((e) => e.category !== "FOUNDER_WITHDRAWAL")
-    .reduce((sum, e) => sum + e.amount, 0);
-  const totalRevenue = await getTotalRevenue();
-  const totalNetProfit = totalRevenue - nonWithdrawalExpenses;
-
-  // Get all withdrawals
-  const withdrawals = await getAllWithdrawals();
-  const approvedWithdrawals = withdrawals.filter((w) => w.status === "APPROVED");
-
-  // Get all users to map founderId to name
-  const users = await getDocs<{ id: string; name: string; email: string }>(COLLECTIONS.USERS);
-
-  const foundersData = FOUNDERS.map((founder) => {
-    // Find user by email
-    const user = users.find((u) => u.email.toLowerCase() === founder.email.toLowerCase());
-    const founderId = user?.id || "";
-
-    // Calculate equity share
-    const equityShare = (totalNetProfit * founder.equityPercent) / 100;
-
-    // Calculate total withdrawn by this founder
-    const totalWithdrawn = approvedWithdrawals
-      .filter((w) => w.founderId === founderId)
-      .reduce((sum, w) => sum + w.amount, 0);
-
-    return {
-      founderId,
-      name: founder.name,
-      equityPercent: founder.equityPercent,
-      equityShare,
-      totalWithdrawn,
-      remainingShare: equityShare - totalWithdrawn,
-    };
-  });
-
-  return {
-    founders: foundersData,
-    totalNetProfit,
-  };
 }
 
 // Get financial summary
