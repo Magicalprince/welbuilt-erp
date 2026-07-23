@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import { motion } from "framer-motion";
 import {
   Plus,
@@ -1070,8 +1070,11 @@ function EditCertificateModal({
   const [regenerateCert, setRegenerateCert] = useState(true);
   const [saving, setSaving] = useState(false);
 
-  const populateForm = () => {
-    if (intern) {
+  // Re-populate whenever a different intern's modal is opened — not on every
+  // render, so editing the Name field doesn't get stomped by a re-sync from
+  // the (now stale) intern prop on the very next keystroke.
+  useEffect(() => {
+    if (isOpen && intern) {
       setFormData({
         name: intern.name,
         email: intern.email,
@@ -1092,12 +1095,8 @@ function EditCertificateModal({
         paymentStatus: intern.paymentStatus,
       });
     }
-  };
-
-  // Populate when modal opens
-  if (isOpen && intern && formData.name !== intern.name) {
-    populateForm();
-  }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, intern?.id]);
 
   const handleSubmit = async () => {
     if (!intern) return;
