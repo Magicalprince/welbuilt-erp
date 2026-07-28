@@ -87,11 +87,12 @@ export default function WorkshopDetailView({ workshopId, onBack }: WorkshopDetai
       const dayAmounts = expenseForm[cat].dayAmounts
         .map((v) => (v === "" ? undefined : Number(v)))
         .filter((v): v is number => v !== undefined);
-      return {
+      const expense: WorkshopExpense = {
         category: cat,
         totalAmount: Number(expenseForm[cat].totalAmount),
-        dayAmounts: dayAmounts.length > 0 ? dayAmounts : undefined,
       };
+      if (dayAmounts.length > 0) expense.dayAmounts = dayAmounts;
+      return expense;
     });
 
     try {
@@ -106,7 +107,8 @@ export default function WorkshopDetailView({ workshopId, onBack }: WorkshopDetai
         },
       });
       toast.success("Workshop updated");
-    } catch {
+    } catch (error) {
+      console.error("Failed to update workshop:", error);
       toast.error("Failed to update workshop");
     }
   };
