@@ -7,6 +7,8 @@ import {
   useSparksLeadFollowUps,
   useChangeSparksLeadStatus,
   useAddSparksLeadFollowUp,
+  useUpdateSparksLeadFollowUp,
+  useDeleteSparksLeadFollowUp,
   useFindMatchingClient,
   useConvertSparksLead,
 } from "@/hooks/useLeads";
@@ -49,6 +51,8 @@ export default function LeadDetailView({ lead, onBack }: LeadDetailViewProps) {
   const { data: followUps, isLoading: loadingFollowUps } = useSparksLeadFollowUps(lead.id);
   const changeStatusMutation = useChangeSparksLeadStatus();
   const addFollowUpMutation = useAddSparksLeadFollowUp();
+  const updateFollowUpMutation = useUpdateSparksLeadFollowUp();
+  const deleteFollowUpMutation = useDeleteSparksLeadFollowUp();
   const findMatchMutation = useFindMatchingClient();
   const convertMutation = useConvertSparksLead();
 
@@ -124,6 +128,29 @@ export default function LeadDetailView({ lead, onBack }: LeadDetailViewProps) {
       toast.success("Follow-up logged");
     } catch {
       toast.error("Failed to log follow-up");
+    }
+  };
+
+  const handleEditFollowUp = async (followUpId: string, data: {
+    meetingNotes: string;
+    updatedCount?: number;
+    updatedAmount?: number;
+    nextFollowUpDate?: Date;
+  }) => {
+    try {
+      await updateFollowUpMutation.mutateAsync({ followUpId, leadId: lead.id, data });
+      toast.success("Follow-up updated");
+    } catch {
+      toast.error("Failed to update follow-up");
+    }
+  };
+
+  const handleDeleteFollowUp = async (followUpId: string) => {
+    try {
+      await deleteFollowUpMutation.mutateAsync({ followUpId, leadId: lead.id });
+      toast.success("Follow-up deleted");
+    } catch {
+      toast.error("Failed to delete follow-up");
     }
   };
 
@@ -221,8 +248,11 @@ export default function LeadDetailView({ lead, onBack }: LeadDetailViewProps) {
               <FollowUpTimeline
                 followUps={followUps || []}
                 isLoading={loadingFollowUps}
-                amountLabel="Amount"
+                amountLabel="Quoted Amount (₹)"
                 initialAmount={undefined}
+                originalEntry={{ date: lead.createdAt, notes: lead.description }}
+                onEdit={handleEditFollowUp}
+                onDelete={handleDeleteFollowUp}
               />
             </CardContent>
           </Card>

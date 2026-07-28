@@ -6,6 +6,8 @@ import {
   useSparkedCollege,
   useChangeDepartmentStatus,
   useAddDeptFollowUp,
+  useUpdateDeptFollowUp,
+  useDeleteDeptFollowUp,
   useSignDepartmentMou,
   useDeptFollowUps,
   useWorkshopsByDept,
@@ -41,7 +43,8 @@ interface DepartmentDetailViewProps {
   collegeId: string;
   deptId: string;
   onBack: () => void;
-  onOpenWorkshop: (workshopId: string) => void;
+  /** Omit to hide workshop scheduling entirely (e.g. on the Leads page — workshops are Clients-page-only) */
+  onOpenWorkshop?: (workshopId: string) => void;
 }
 
 export default function DepartmentDetailView({
@@ -50,11 +53,14 @@ export default function DepartmentDetailView({
   onBack,
   onOpenWorkshop,
 }: DepartmentDetailViewProps) {
+  const showWorkshops = !!onOpenWorkshop;
   const { data: collegeData, isLoading } = useSparkedCollege(collegeId);
   const { data: followUps, isLoading: loadingFollowUps } = useDeptFollowUps(deptId);
-  const { data: workshops, isLoading: loadingWorkshops } = useWorkshopsByDept(deptId);
+  const { data: workshops, isLoading: loadingWorkshops } = useWorkshopsByDept(showWorkshops ? deptId : "");
   const changeStatusMutation = useChangeDepartmentStatus();
   const addFollowUpMutation = useAddDeptFollowUp();
+  const updateFollowUpMutation = useUpdateDeptFollowUp();
+  const deleteFollowUpMutation = useDeleteDeptFollowUp();
   const signMouMutation = useSignDepartmentMou();
 
   const [isDropPromptOpen, setIsDropPromptOpen] = useState(false);
@@ -131,6 +137,29 @@ export default function DepartmentDetailView({
       toast.success("Follow-up logged");
     } catch {
       toast.error("Failed to log follow-up");
+    }
+  };
+
+  const handleEditFollowUp = async (followUpId: string, data: {
+    meetingNotes: string;
+    updatedCount?: number;
+    updatedAmount?: number;
+    nextFollowUpDate?: Date;
+  }) => {
+    try {
+      await updateFollowUpMutation.mutateAsync({ followUpId, deptId: department.id, data });
+      toast.success("Follow-up updated");
+    } catch {
+      toast.error("Failed to update follow-up");
+    }
+  };
+
+  const handleDeleteFollowUp = async (followUpId: string) => {
+    try {
+      await deleteFollowUpMutation.mutateAsync({ followUpId, deptId: department.id });
+      toast.success("Follow-up deleted");
+    } catch {
+      toast.error("Failed to delete follow-up");
     }
   };
 
@@ -228,65 +257,71 @@ export default function DepartmentDetailView({
               <FollowUpTimeline
                 followUps={followUps || []}
                 isLoading={loadingFollowUps}
+                showCount
                 countLabel="Count"
                 amountLabel="Rate"
+                originalEntry={{ date: department.dateFirstSpoken, notes: department.meetingDescription }}
+                onEdit={handleEditFollowUp}
+                onDelete={handleDeleteFollowUp}
               />
             </CardContent>
           </Card>
 
-          <Card>
-            <CardContent className="p-6 space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="font-medium">Workshops ({workshops?.length || 0})</h3>
-                <Button size="sm" onClick={() => setIsAddWorkshopOpen(true)}>
-                  <Plus className="h-3.5 w-3.5 mr-1.5" />
-                  Add Workshop
-                </Button>
-              </div>
+          {showWorkshops && (
+            <Card>
+              <CardContent className="p-6 space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="font-medium">Workshops ({workshops?.length || 0})</h3>
+                  <Button size="sm" onClick={() => setIsAddWorkshopOpen(true)}>
+                    <Plus className="h-3.5 w-3.5 mr-1.5" />
+                    Add Workshop
+                  </Button>
+                </div>
 
-              {loadingWorkshops ? (
-                <Skeleton className="h-20 w-full" />
-              ) : !workshops || workshops.length === 0 ? (
-                <div className="text-center py-8 border rounded-lg border-dashed">
-                  <GraduationCap className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
-                  <p className="text-sm text-muted-foreground">No workshops recorded yet</p>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {workshops.map((w) => {
-                    const financials = getWorkshopFinancials(w);
-                    return (
-                      <button
-                        key={w.id}
-                        onClick={() => onOpenWorkshop(w.id)}
-                        className="w-full text-left p-3 border rounded-lg hover:bg-muted/30 transition-colors"
-                      >
-                        <div className="flex items-start justify-between gap-3 flex-wrap">
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <p className="font-medium text-sm">{w.workshopTitle}</p>
-                              <Badge variant={w.status === "COMPLETED" ? "success" : "warning"} className="text-xs">
-                                {WORKSHOP_STATUS_LABELS[w.status]}
-                              </Badge>
+                {loadingWorkshops ? (
+                  <Skeleton className="h-20 w-full" />
+                ) : !workshops || workshops.length === 0 ? (
+                  <div className="text-center py-8 border rounded-lg border-dashed">
+                    <GraduationCap className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
+                    <p className="text-sm text-muted-foreground">No workshops recorded yet</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {workshops.map((w) => {
+                      const financials = getWorkshopFinancials(w);
+                      return (
+                        <button
+                          key={w.id}
+                          onClick={() => onOpenWorkshop?.(w.id)}
+                          className="w-full text-left p-3 border rounded-lg hover:bg-muted/30 transition-colors"
+                        >
+                          <div className="flex items-start justify-between gap-3 flex-wrap">
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <p className="font-medium text-sm">{w.workshopTitle}</p>
+                                <Badge variant={w.status === "COMPLETED" ? "success" : "warning"} className="text-xs">
+                                  {WORKSHOP_STATUS_LABELS[w.status]}
+                                </Badge>
+                              </div>
+                              <p className="text-xs text-muted-foreground mt-0.5">
+                                {w.targetYear} · {formatDate(w.startDate)} – {formatDate(w.endDate)}
+                              </p>
                             </div>
-                            <p className="text-xs text-muted-foreground mt-0.5">
-                              {w.targetYear} · {formatDate(w.startDate)} – {formatDate(w.endDate)}
-                            </p>
+                            <div className="text-right text-xs shrink-0">
+                              <p className="text-green-500 font-medium">{formatCurrency(financials.totalEarnings)}</p>
+                              <p className="text-muted-foreground">
+                                Margin: {formatCurrency(financials.netMargin)}
+                              </p>
+                            </div>
                           </div>
-                          <div className="text-right text-xs shrink-0">
-                            <p className="text-green-500 font-medium">{formatCurrency(financials.totalEarnings)}</p>
-                            <p className="text-muted-foreground">
-                              Margin: {formatCurrency(financials.netMargin)}
-                            </p>
-                          </div>
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-            </CardContent>
-          </Card>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
         </div>
 
         <div className="space-y-6">
@@ -326,12 +361,14 @@ export default function DepartmentDetailView({
         </div>
       </div>
 
-      <AddWorkshopModal
-        isOpen={isAddWorkshopOpen}
-        deptId={department.id}
-        collegeId={collegeId}
-        onClose={() => setIsAddWorkshopOpen(false)}
-      />
+      {showWorkshops && (
+        <AddWorkshopModal
+          isOpen={isAddWorkshopOpen}
+          deptId={department.id}
+          collegeId={collegeId}
+          onClose={() => setIsAddWorkshopOpen(false)}
+        />
+      )}
     </div>
   );
 }

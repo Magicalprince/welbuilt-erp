@@ -173,6 +173,31 @@ export function useAddSparksLeadFollowUp() {
   });
 }
 
+export function useUpdateSparksLeadFollowUp() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: {
+      followUpId: string;
+      leadId: string;
+      data: sparksLeadService.UpdateFollowUpInput;
+    }) => sparksLeadService.updateFollowUp(input.followUpId, input.data),
+    onSuccess: (_, { leadId }) => {
+      queryClient.invalidateQueries({ queryKey: leadQueryKeys.sparksLeadFollowUps(leadId) });
+    },
+  });
+}
+
+export function useDeleteSparksLeadFollowUp() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ followUpId }: { followUpId: string; leadId: string }) =>
+      sparksLeadService.deleteFollowUp(followUpId),
+    onSuccess: (_, { leadId }) => {
+      queryClient.invalidateQueries({ queryKey: leadQueryKeys.sparksLeadFollowUps(leadId) });
+    },
+  });
+}
+
 export function useFindMatchingClient() {
   return useMutation({
     mutationFn: ({ email, phone }: { email?: string; phone?: string }) =>
@@ -324,6 +349,31 @@ export function useAddDeptFollowUp() {
     onSuccess: (_, { deptId }) => {
       queryClient.invalidateQueries({ queryKey: leadQueryKeys.sparkedDeptFollowUps(deptId) });
       queryClient.invalidateQueries({ queryKey: leadQueryKeys.sparkedCollegesWithDepts });
+    },
+  });
+}
+
+export function useUpdateDeptFollowUp() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: {
+      followUpId: string;
+      deptId: string;
+      data: sparkedLeadService.UpdateDeptFollowUpInput;
+    }) => sparkedLeadService.updateDeptFollowUp(input.followUpId, input.data),
+    onSuccess: (_, { deptId }) => {
+      queryClient.invalidateQueries({ queryKey: leadQueryKeys.sparkedDeptFollowUps(deptId) });
+    },
+  });
+}
+
+export function useDeleteDeptFollowUp() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ followUpId }: { followUpId: string; deptId: string }) =>
+      sparkedLeadService.deleteDeptFollowUp(followUpId),
+    onSuccess: (_, { deptId }) => {
+      queryClient.invalidateQueries({ queryKey: leadQueryKeys.sparkedDeptFollowUps(deptId) });
     },
   });
 }

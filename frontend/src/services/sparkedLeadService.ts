@@ -208,7 +208,9 @@ export interface FirestoreSparkedDeptFollowUp {
   id: string;
   deptId: string;
   date: Timestamp;
-  meetingNotes: string;
+  meetingNotes?: string;
+  /** @deprecated pre-redesign field name, kept for reading historical records */
+  note?: string;
   updatedCount?: number;
   updatedAmount?: number;
   nextFollowUpDate?: Timestamp;
@@ -219,6 +221,7 @@ export interface FirestoreSparkedDeptFollowUp {
 function toFollowUp(doc: FirestoreSparkedDeptFollowUp): SparkedDeptFollowUp {
   return {
     ...doc,
+    meetingNotes: doc.meetingNotes ?? doc.note ?? "",
     date: doc.date.toDate(),
     nextFollowUpDate: doc.nextFollowUpDate?.toDate(),
     createdAt: doc.createdAt.toDate(),
@@ -264,6 +267,32 @@ export async function addDeptFollowUp(input: AddDeptFollowUpInput): Promise<stri
   }
 
   return followUpId;
+}
+
+export interface UpdateDeptFollowUpInput {
+  meetingNotes: string;
+  updatedCount?: number;
+  updatedAmount?: number;
+  nextFollowUpDate?: Date;
+}
+
+// Corrects a historical follow-up entry. Does NOT re-patch the department's
+// live approxCount/rateDiscussed/nextFollowUpDate — those were already
+// updated when the follow-up was first logged; editing only fixes the record.
+export async function updateDeptFollowUp(
+  followUpId: string,
+  input: UpdateDeptFollowUpInput
+): Promise<void> {
+  await updateDocument(COLLECTIONS.SPARKED_DEPT_FOLLOWUPS, followUpId, {
+    meetingNotes: input.meetingNotes,
+    updatedCount: input.updatedCount,
+    updatedAmount: input.updatedAmount,
+    nextFollowUpDate: input.nextFollowUpDate ? toTimestamp(input.nextFollowUpDate) : undefined,
+  });
+}
+
+export async function deleteDeptFollowUp(followUpId: string): Promise<void> {
+  await deleteDocument(COLLECTIONS.SPARKED_DEPT_FOLLOWUPS, followUpId);
 }
 
 // ============================================

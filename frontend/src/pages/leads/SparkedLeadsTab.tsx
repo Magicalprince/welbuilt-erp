@@ -7,7 +7,6 @@ import type { SparkedCollegeWithDepts, SparkedDepartment, SparkedDeptStatus } fr
 import { SPARKED_DEPT_STATUS_LABELS } from "@/types";
 import CollegeDetailView from "./CollegeDetailView";
 import DepartmentDetailView from "./DepartmentDetailView";
-import WorkshopDetailView from "./WorkshopDetailView";
 import toast from "react-hot-toast";
 
 function summarizeStatuses(departments: SparkedDepartment[]): string {
@@ -22,8 +21,7 @@ function summarizeStatuses(departments: SparkedDepartment[]): string {
 type SparkedView =
   | { type: "grid" }
   | { type: "college"; collegeId: string }
-  | { type: "department"; collegeId: string; deptId: string }
-  | { type: "workshop"; collegeId: string; deptId: string; workshopId: string };
+  | { type: "department"; collegeId: string; deptId: string };
 
 export default function SparkedLeadsTab() {
   const [searchQuery, setSearchQuery] = useState("");
@@ -59,24 +57,12 @@ export default function SparkedLeadsTab() {
     }
   };
 
-  if (view.type === "workshop") {
-    return (
-      <WorkshopDetailView
-        workshopId={view.workshopId}
-        onBack={() => setView({ type: "department", collegeId: view.collegeId, deptId: view.deptId })}
-      />
-    );
-  }
-
   if (view.type === "department") {
     return (
       <DepartmentDetailView
         collegeId={view.collegeId}
         deptId={view.deptId}
         onBack={() => setView({ type: "college", collegeId: view.collegeId })}
-        onOpenWorkshop={(workshopId) =>
-          setView({ type: "workshop", collegeId: view.collegeId, deptId: view.deptId, workshopId })
-        }
       />
     );
   }
