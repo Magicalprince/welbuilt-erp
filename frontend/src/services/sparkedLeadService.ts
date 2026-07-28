@@ -93,6 +93,8 @@ export interface FirestoreSparkedDepartment {
   contactName: string;
   contactNumber: string;
   contactEmail?: string;
+  approachedByName: string;
+  approachedByNumber: string;
   dateFirstSpoken: Timestamp;
   meetingDescription: string;
   rateDiscussed?: number;

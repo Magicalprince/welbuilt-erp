@@ -572,6 +572,8 @@ export interface SparkedDepartment {
   contactName: string;
   contactNumber: string;
   contactEmail?: string;
+  approachedByName: string;
+  approachedByNumber: string;
   dateFirstSpoken: Date;
   meetingDescription: string;
   rateDiscussed?: number;

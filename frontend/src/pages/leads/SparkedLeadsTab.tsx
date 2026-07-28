@@ -415,6 +415,8 @@ function AddDepartmentModal({
     contactName: "",
     contactNumber: "",
     contactEmail: "",
+    approachedByName: "",
+    approachedByNumber: "",
     dateFirstSpoken: new Date().toISOString().split("T")[0],
     meetingDescription: "",
     rateDiscussed: "",
@@ -433,6 +435,8 @@ function AddDepartmentModal({
       !formData.deptName.trim() ||
       !formData.contactName.trim() ||
       !formData.contactNumber.trim() ||
+      !formData.approachedByName.trim() ||
+      !formData.approachedByNumber.trim() ||
       !formData.dateFirstSpoken ||
       !formData.meetingDescription.trim()
     ) {
@@ -446,6 +450,8 @@ function AddDepartmentModal({
         contactName: formData.contactName.trim(),
         contactNumber: formData.contactNumber.trim(),
         contactEmail: formData.contactEmail.trim() || undefined,
+        approachedByName: formData.approachedByName.trim(),
+        approachedByNumber: formData.approachedByNumber.trim(),
         dateFirstSpoken: new Date(formData.dateFirstSpoken),
         meetingDescription: formData.meetingDescription.trim(),
         rateDiscussed: formData.rateDiscussed ? Number(formData.rateDiscussed) : undefined,
@@ -494,6 +500,27 @@ function AddDepartmentModal({
               onChange={(e) => setFormData({ ...formData, contactEmail: e.target.value })}
             />
           </div>
+
+          <div className="col-span-2 border-t pt-4 mt-2">
+            <h4 className="font-medium mb-3">Our Point of Contact</h4>
+          </div>
+
+          <div>
+            <Label>Approached By *</Label>
+            <Input
+              value={formData.approachedByName}
+              onChange={(e) => setFormData({ ...formData, approachedByName: e.target.value })}
+              placeholder="Who from our team spoke to them"
+            />
+          </div>
+          <div>
+            <Label>Approached By Number *</Label>
+            <Input
+              value={formData.approachedByNumber}
+              onChange={(e) => setFormData({ ...formData, approachedByNumber: e.target.value })}
+            />
+          </div>
+
           <div>
             <Label>Date First Spoken *</Label>
             <Input
@@ -692,6 +719,10 @@ function DepartmentRow({ department }: { department: SparkedDepartment }) {
 
       {expanded && (
         <div className="border-t p-3 space-y-4" onClick={(e) => e.stopPropagation()}>
+          <p className="text-sm">
+            <span className="text-muted-foreground">Approached by: </span>
+            {department.approachedByName} · {department.approachedByNumber}
+          </p>
           <p className="text-sm">
             <span className="text-muted-foreground">Meeting notes: </span>
             {department.meetingDescription}
