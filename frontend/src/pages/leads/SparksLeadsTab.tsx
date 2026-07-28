@@ -1,5 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+﻿import { useState, useMemo, useEffect } from "react";
 import { motion } from "framer-motion";
 import {
   Plus,
@@ -9,7 +8,6 @@ import {
   Loader2,
   Target,
   Trash2,
-  AlertCircle,
   Users,
 } from "lucide-react";
 import {
@@ -24,17 +22,12 @@ import {
   Select,
   Textarea,
 } from "@/components/ui";
-import { cn, formatCurrency, formatDate } from "@/lib/utils";
+import { cn, formatCurrency } from "@/lib/utils";
 import {
   useSparksLeads,
-  useSparksLeadFollowUps,
   useReferrers,
   useCreateSparksLead,
-  useChangeSparksLeadStatus,
   useDeleteSparksLead,
-  useAddSparksLeadFollowUp,
-  useFindMatchingClient,
-  useConvertSparksLead,
   useCreateReferrer,
 } from "@/hooks/useLeads";
 import type {
@@ -46,6 +39,7 @@ import type {
 } from "@/types";
 import { LEAD_SOURCE_LABELS, SPARKS_LEAD_STATUS_LABELS } from "@/types";
 import ReferrersPanel from "./ReferrersPanel";
+import LeadDetailView from "./LeadDetailView";
 import toast from "react-hot-toast";
 
 const statusOptions: { value: SparksLeadStatus | "ALL"; label: string }[] = [
@@ -90,12 +84,17 @@ export default function SparksLeadsTab() {
   const [showFilters, setShowFilters] = useState(false);
 
   const [isNewModalOpen, setIsNewModalOpen] = useState(false);
-  const [detailLead, setDetailLead] = useState<SparksLead | null>(null);
+  const [detailLeadId, setDetailLeadId] = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<SparksLead | null>(null);
   const [isReferrersOpen, setIsReferrersOpen] = useState(false);
 
   const { data: leads, isLoading } = useSparksLeads();
   const deleteMutation = useDeleteSparksLead();
+
+  const detailLead = useMemo(
+    () => (detailLeadId ? leads?.find((l) => l.id === detailLeadId) || null : null),
+    [leads, detailLeadId]
+  );
 
   const filteredLeads = useMemo(() => {
     if (!leads) return [];
@@ -125,10 +124,15 @@ export default function SparksLeadsTab() {
       await deleteMutation.mutateAsync(deleteConfirm.id);
       toast.success("Lead deleted");
       setDeleteConfirm(null);
+      if (detailLeadId === deleteConfirm.id) setDetailLeadId(null);
     } catch {
       toast.error("Failed to delete lead");
     }
   };
+
+  if (detailLead) {
+    return <LeadDetailView lead={detailLead} onBack={() => setDetailLeadId(null)} />;
+  }
 
   return (
     <div className="space-y-4">
@@ -241,7 +245,7 @@ export default function SparksLeadsTab() {
                     <tr
                       key={lead.id}
                       className="border-t hover:bg-muted/30 transition-colors cursor-pointer"
-                      onClick={() => setDetailLead(lead)}
+                      onClick={() => setDetailLeadId(lead.id)}
                     >
                       <td className="p-3">
                         <div className="flex items-center gap-2">
@@ -300,12 +304,6 @@ export default function SparksLeadsTab() {
       )}
 
       <NewLeadModal isOpen={isNewModalOpen} onClose={() => setIsNewModalOpen(false)} />
-
-      <LeadDetailModal
-        key={detailLead?.id || "none"}
-        lead={detailLead}
-        onClose={() => setDetailLead(null)}
-      />
 
       <ReferrersPanel isOpen={isReferrersOpen} onClose={() => setIsReferrersOpen(false)} />
 
@@ -626,321 +624,3 @@ function NewLeadModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => voi
   );
 }
 
-// ============================================
-// Lead Detail Modal
-// ============================================
-function LeadDetailModal({
-  lead,
-  onClose,
-}: {
-  lead: SparksLead | null;
-  onClose: () => void;
-}) {
-  const navigate = useNavigate();
-  const { data: followUps, isLoading: loadingFollowUps } = useSparksLeadFollowUps(lead?.id || "");
-  const changeStatusMutation = useChangeSparksLeadStatus();
-  const addFollowUpMutation = useAddSparksLeadFollowUp();
-  const findMatchMutation = useFindMatchingClient();
-  const convertMutation = useConvertSparksLead();
-
-  const [followUpNote, setFollowUpNote] = useState("");
-  const [followUpNextDate, setFollowUpNextDate] = useState("");
-  const [isDropPromptOpen, setIsDropPromptOpen] = useState(false);
-  const [dropReason, setDropReason] = useState("");
-  const [matchResult, setMatchResult] = useState<{ id: string; companyName: string } | "none" | null>(null);
-
-  if (!lead) return null;
-
-  const handleAddFollowUp = async () => {
-    if (!followUpNote.trim()) {
-      toast.error("Please enter a note");
-      return;
-    }
-    try {
-      await addFollowUpMutation.mutateAsync({
-        leadId: lead.id,
-        note: followUpNote.trim(),
-        nextFollowUpDate: followUpNextDate ? new Date(followUpNextDate) : undefined,
-      });
-      toast.success("Follow-up logged");
-      setFollowUpNote("");
-      setFollowUpNextDate("");
-    } catch {
-      toast.error("Failed to log follow-up");
-    }
-  };
-
-  const handleStatusChange = async (newStatus: SparksLeadStatus) => {
-    if (newStatus === lead.status) return;
-    if (newStatus === "DROPPED") {
-      setIsDropPromptOpen(true);
-      return;
-    }
-    try {
-      await changeStatusMutation.mutateAsync({ id: lead.id, status: newStatus });
-      toast.success("Status updated");
-    } catch {
-      toast.error("Failed to update status");
-    }
-  };
-
-  const confirmDrop = async () => {
-    if (!dropReason.trim()) {
-      toast.error("Please provide a reason");
-      return;
-    }
-    try {
-      await changeStatusMutation.mutateAsync({ id: lead.id, status: "DROPPED", dropReason: dropReason.trim() });
-      toast.success("Lead marked as dropped");
-      setIsDropPromptOpen(false);
-      setDropReason("");
-    } catch {
-      toast.error("Failed to update status");
-    }
-  };
-
-  const canConvert = lead.status === "NEW" || lead.status === "IN_CONVERSATION";
-
-  const handleConvertClick = async () => {
-    try {
-      const match = await findMatchMutation.mutateAsync({ email: lead.email, phone: lead.contactNumber });
-      setMatchResult(match || "none");
-    } catch {
-      toast.error("Failed to check for existing clients");
-    }
-  };
-
-  const doConvert = async (linkToClientId?: string) => {
-    try {
-      const result = await convertMutation.mutateAsync({ leadId: lead.id, linkToClientId });
-      toast.success(linkToClientId ? "Lead linked to existing client" : "Lead converted to client");
-      setMatchResult(null);
-      onClose();
-      navigate(`/clients/${result.clientId}`);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to convert lead";
-      toast.error(message);
-    }
-  };
-
-  return (
-    <>
-      <Modal isOpen={!!lead && matchResult === null} onClose={onClose} title={lead.leadName} size="lg">
-        <div className="space-y-5">
-          <div className="flex items-center gap-2">
-            <Badge variant={statusBadgeVariant(lead.status)}>{SPARKS_LEAD_STATUS_LABELS[lead.status]}</Badge>
-            <Badge variant="secondary">{LEAD_SOURCE_LABELS[lead.source]}</Badge>
-            {isOverdue(lead) && <Badge variant="destructive">Follow-up Overdue</Badge>}
-          </div>
-
-          <div className="grid grid-cols-2 gap-4 text-sm">
-            <div>
-              <p className="text-muted-foreground">Contact Number</p>
-              <p className="font-medium">{lead.contactNumber}</p>
-            </div>
-            <div>
-              <p className="text-muted-foreground">Email</p>
-              <p className="font-medium">{lead.email || "—"}</p>
-            </div>
-            <div className="col-span-2">
-              <p className="text-muted-foreground">Project</p>
-              <p className="font-medium">{lead.projectName}</p>
-            </div>
-            <div className="col-span-2">
-              <p className="text-muted-foreground">Description</p>
-              <p className="font-medium whitespace-pre-wrap">{lead.description}</p>
-            </div>
-            {lead.address && (
-              <div className="col-span-2">
-                <p className="text-muted-foreground">Address</p>
-                <p className="font-medium">{lead.address}</p>
-              </div>
-            )}
-            {lead.quotedAmount !== undefined && (
-              <div>
-                <p className="text-muted-foreground">Quoted Amount</p>
-                <p className="font-medium">{formatCurrency(lead.quotedAmount)}</p>
-              </div>
-            )}
-            {lead.quotationNotes && (
-              <div className="col-span-2">
-                <p className="text-muted-foreground">Quotation Notes</p>
-                <p className="font-medium">{lead.quotationNotes}</p>
-              </div>
-            )}
-            {lead.commissionType && (
-              <>
-                <div>
-                  <p className="text-muted-foreground">Commission</p>
-                  <p className="font-medium">
-                    {lead.commissionType === "PERCENTAGE" ? `${lead.commissionValue}%` : formatCurrency(lead.commissionValue || 0)}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground">Commission Status</p>
-                  <Badge variant={lead.commissionStatus === "PAID" ? "success" : "warning"} className="mt-0.5">
-                    {lead.commissionStatus}
-                  </Badge>
-                </div>
-              </>
-            )}
-            {lead.status === "DROPPED" && lead.dropReason && (
-              <div className="col-span-2">
-                <p className="text-muted-foreground">Drop Reason</p>
-                <p className="font-medium">{lead.dropReason}</p>
-              </div>
-            )}
-          </div>
-
-          <div className="border-t pt-4 space-y-3">
-            <div className="flex items-center justify-between gap-3">
-              <Label className="mb-0">Status</Label>
-              <div className="w-48">
-                <Select
-                  value={lead.status}
-                  onChange={(e) => handleStatusChange(e.target.value as SparksLeadStatus)}
-                  options={statusOptions.filter((o) => o.value !== "ALL")}
-                  disabled={changeStatusMutation.isPending}
-                />
-              </div>
-            </div>
-
-            {isDropPromptOpen && (
-              <div className="p-3 border rounded-lg space-y-2 bg-muted/30">
-                <Label className="flex items-center gap-1.5 text-sm">
-                  <AlertCircle className="h-3.5 w-3.5" />
-                  Reason for dropping *
-                </Label>
-                <Textarea
-                  value={dropReason}
-                  onChange={(e) => setDropReason(e.target.value)}
-                  placeholder="Why is this lead being dropped?"
-                />
-                <div className="flex gap-2 justify-end">
-                  <Button variant="outline" size="sm" onClick={() => setIsDropPromptOpen(false)}>
-                    Cancel
-                  </Button>
-                  <Button size="sm" onClick={confirmDrop} disabled={changeStatusMutation.isPending}>
-                    Confirm Drop
-                  </Button>
-                </div>
-              </div>
-            )}
-
-            <Button
-              className="w-full"
-              onClick={handleConvertClick}
-              disabled={!canConvert || findMatchMutation.isPending}
-              title={
-                !canConvert
-                  ? `Cannot convert a lead with status ${SPARKS_LEAD_STATUS_LABELS[lead.status]}`
-                  : undefined
-              }
-            >
-              {findMatchMutation.isPending ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Checking...
-                </>
-              ) : (
-                "Convert to Client"
-              )}
-            </Button>
-          </div>
-
-          <div className="border-t pt-4 space-y-3">
-            <h4 className="font-medium text-sm">Follow-up History</h4>
-            <div className="space-y-2">
-              <Textarea
-                value={followUpNote}
-                onChange={(e) => setFollowUpNote(e.target.value)}
-                placeholder="Log a note about this follow-up..."
-                className="min-h-[70px]"
-              />
-              <div className="flex gap-2">
-                <div className="flex-1">
-                  <Label className="text-xs mb-1 block">Next follow-up (optional)</Label>
-                  <Input
-                    type="date"
-                    value={followUpNextDate}
-                    onChange={(e) => setFollowUpNextDate(e.target.value)}
-                  />
-                </div>
-                <Button
-                  className="self-end"
-                  size="sm"
-                  onClick={handleAddFollowUp}
-                  disabled={addFollowUpMutation.isPending}
-                >
-                  Add Follow-up
-                </Button>
-              </div>
-            </div>
-
-            {loadingFollowUps ? (
-              <Skeleton className="h-16 w-full" />
-            ) : !followUps || followUps.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-4">No follow-ups logged yet</p>
-            ) : (
-              <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
-                {followUps.map((f) => (
-                  <div key={f.id} className="p-3 border rounded-lg text-sm">
-                    <div className="flex items-center justify-between">
-                      <p className="font-medium">{formatDate(f.date)}</p>
-                      <p className="text-xs text-muted-foreground">{f.loggedBy || "—"}</p>
-                    </div>
-                    <p className="text-muted-foreground mt-1 whitespace-pre-wrap">{f.note}</p>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      </Modal>
-
-      <Modal
-        isOpen={matchResult !== null}
-        onClose={() => setMatchResult(null)}
-        title="Convert to Client"
-      >
-        {matchResult === "none" ? (
-          <div className="space-y-4">
-            <p>No existing client matches this lead's contact info. A new client will be created.</p>
-            <div className="flex gap-3">
-              <Button variant="outline" className="flex-1" onClick={() => setMatchResult(null)}>
-                Cancel
-              </Button>
-              <Button className="flex-1" onClick={() => doConvert()} disabled={convertMutation.isPending}>
-                {convertMutation.isPending ? "Converting..." : "Create Client"}
-              </Button>
-            </div>
-          </div>
-        ) : matchResult ? (
-          <div className="space-y-4">
-            <p>
-              An existing client "<strong>{matchResult.companyName}</strong>" matches this lead's contact info.
-              Link to it, or create a new separate client?
-            </p>
-            <div className="flex gap-3">
-              <Button
-                variant="outline"
-                className="flex-1"
-                onClick={() => doConvert()}
-                disabled={convertMutation.isPending}
-              >
-                Create New
-              </Button>
-              <Button
-                className="flex-1"
-                onClick={() => doConvert(matchResult.id)}
-                disabled={convertMutation.isPending}
-              >
-                {convertMutation.isPending ? "Linking..." : `Link to ${matchResult.companyName}`}
-              </Button>
-            </div>
-          </div>
-        ) : null}
-      </Modal>
-    </>
-  );
-}

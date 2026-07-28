@@ -1,8 +1,9 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import type { Referrer, SparksLead, SparksLeadStatus, SparkedCollege, SparkedDepartment, SparkedDeptStatus } from "@/types";
+import type { Referrer, SparksLead, SparksLeadStatus, SparkedCollege, SparkedDepartment, SparkedDeptStatus, Workshop } from "@/types";
 import * as referrerService from "@/services/referrerService";
 import * as sparksLeadService from "@/services/sparksLeadService";
 import * as sparkedLeadService from "@/services/sparkedLeadService";
+import * as workshopService from "@/services/workshopService";
 import { useAuthStore } from "@/store/authStore";
 
 // ============================================
@@ -24,6 +25,11 @@ export const leadQueryKeys = {
   sparkedConvertedColleges: ["sparkedColleges", "converted"] as const,
   sparkedDepartments: (collegeId: string) => ["sparkedDepartments", collegeId] as const,
   sparkedDeptFollowUps: (deptId: string) => ["sparkedDepartments", deptId, "followUps"] as const,
+
+  workshopsByDept: (deptId: string) => ["workshops", "dept", deptId] as const,
+  workshopsByCollege: (collegeId: string) => ["workshops", "college", collegeId] as const,
+  workshop: (id: string) => ["workshops", id] as const,
+  sparkedAnalytics: ["sparkedAnalytics"] as const,
 };
 
 // ============================================
@@ -157,8 +163,8 @@ export function useAddSparksLeadFollowUp() {
   const queryClient = useQueryClient();
   const user = useAuthStore((s) => s.user);
   return useMutation({
-    mutationFn: ({ leadId, note, nextFollowUpDate }: { leadId: string; note: string; nextFollowUpDate?: Date }) =>
-      sparksLeadService.addFollowUp(leadId, note, user?.id || "", nextFollowUpDate),
+    mutationFn: (input: Omit<sparksLeadService.AddFollowUpInput, "loggedBy">) =>
+      sparksLeadService.addFollowUp({ ...input, loggedBy: user?.id || "" }),
     onSuccess: (_, { leadId }) => {
       queryClient.invalidateQueries({ queryKey: leadQueryKeys.sparksLeadFollowUps(leadId) });
       queryClient.invalidateQueries({ queryKey: leadQueryKeys.sparksLeads });
@@ -313,8 +319,8 @@ export function useAddDeptFollowUp() {
   const queryClient = useQueryClient();
   const user = useAuthStore((s) => s.user);
   return useMutation({
-    mutationFn: ({ deptId, note, nextFollowUpDate }: { deptId: string; note: string; nextFollowUpDate?: Date }) =>
-      sparkedLeadService.addDeptFollowUp(deptId, note, user?.id || "", nextFollowUpDate),
+    mutationFn: (input: Omit<sparkedLeadService.AddDeptFollowUpInput, "loggedBy">) =>
+      sparkedLeadService.addDeptFollowUp({ ...input, loggedBy: user?.id || "" }),
     onSuccess: (_, { deptId }) => {
       queryClient.invalidateQueries({ queryKey: leadQueryKeys.sparkedDeptFollowUps(deptId) });
       queryClient.invalidateQueries({ queryKey: leadQueryKeys.sparkedCollegesWithDepts });
@@ -344,6 +350,77 @@ export function useSignCollegeWideMou() {
       queryClient.invalidateQueries({ queryKey: leadQueryKeys.sparkedCollegesWithDepts });
       queryClient.invalidateQueries({ queryKey: leadQueryKeys.sparkedConvertedColleges });
       queryClient.invalidateQueries({ queryKey: leadQueryKeys.sparkedColleges });
+    },
+  });
+}
+
+// ============================================
+// Workshops
+// ============================================
+export function useWorkshopsByDept(deptId: string) {
+  return useQuery({
+    queryKey: leadQueryKeys.workshopsByDept(deptId),
+    queryFn: () => workshopService.getWorkshopsByDept(deptId),
+    enabled: !!deptId,
+  });
+}
+
+export function useWorkshopsByCollege(collegeId: string) {
+  return useQuery({
+    queryKey: leadQueryKeys.workshopsByCollege(collegeId),
+    queryFn: () => workshopService.getWorkshopsByCollege(collegeId),
+    enabled: !!collegeId,
+  });
+}
+
+export function useWorkshop(id: string) {
+  return useQuery({
+    queryKey: leadQueryKeys.workshop(id),
+    queryFn: () => workshopService.getWorkshopById(id),
+    enabled: !!id,
+  });
+}
+
+export function useSparkedAnalytics() {
+  return useQuery({
+    queryKey: leadQueryKeys.sparkedAnalytics,
+    queryFn: workshopService.getSparkedAnalytics,
+  });
+}
+
+export function useCreateWorkshop() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: Omit<Workshop, "id" | "status" | "createdAt" | "updatedAt"> & { status?: Workshop["status"] }) =>
+      workshopService.createWorkshop(data),
+    onSuccess: (_, data) => {
+      queryClient.invalidateQueries({ queryKey: leadQueryKeys.workshopsByDept(data.deptId) });
+      queryClient.invalidateQueries({ queryKey: leadQueryKeys.workshopsByCollege(data.collegeId) });
+      queryClient.invalidateQueries({ queryKey: leadQueryKeys.sparkedAnalytics });
+    },
+  });
+}
+
+export function useUpdateWorkshop() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Partial<Omit<Workshop, "id" | "createdAt" | "updatedAt">> }) =>
+      workshopService.updateWorkshop(id, data),
+    onSuccess: (_, { id }) => {
+      queryClient.invalidateQueries({ queryKey: leadQueryKeys.workshop(id) });
+      queryClient.invalidateQueries({ queryKey: ["workshops"] });
+      queryClient.invalidateQueries({ queryKey: leadQueryKeys.sparkedAnalytics });
+    },
+  });
+}
+
+export function useDeleteWorkshop() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => workshopService.deleteWorkshop(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["workshops"] });
+      queryClient.invalidateQueries({ queryKey: leadQueryKeys.sparkedAnalytics });
     },
   });
 }

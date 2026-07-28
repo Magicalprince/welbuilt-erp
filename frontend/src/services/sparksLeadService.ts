@@ -123,7 +123,10 @@ export interface FirestoreSparksLeadFollowUp {
   id: string;
   leadId: string;
   date: Timestamp;
-  note: string;
+  meetingNotes: string;
+  updatedCount?: number;
+  updatedAmount?: number;
+  nextFollowUpDate?: Timestamp;
   loggedBy: string;
   createdAt: Timestamp;
 }
@@ -132,6 +135,7 @@ function toFollowUp(doc: FirestoreSparksLeadFollowUp): SparksLeadFollowUp {
   return {
     ...doc,
     date: doc.date.toDate(),
+    nextFollowUpDate: doc.nextFollowUpDate?.toDate(),
     createdAt: doc.createdAt.toDate(),
   };
 }
@@ -144,24 +148,34 @@ export async function getFollowUpsByLead(leadId: string): Promise<SparksLeadFoll
   return followUps.map(toFollowUp).sort((a, b) => b.date.getTime() - a.date.getTime());
 }
 
-// Logs a follow-up and optionally updates the lead's nextFollowUpDate in one call.
-export async function addFollowUp(
-  leadId: string,
-  note: string,
-  loggedBy: string,
-  nextFollowUpDate?: Date
-): Promise<string> {
+export interface AddFollowUpInput {
+  leadId: string;
+  meetingNotes: string;
+  loggedBy: string;
+  updatedCount?: number;
+  updatedAmount?: number;
+  nextFollowUpDate?: Date;
+}
+
+// Logs a follow-up and patches the lead's live nextFollowUpDate / quotedAmount
+// when the founder provides updated values, so the lead record always
+// reflects what was most recently discussed.
+export async function addFollowUp(input: AddFollowUpInput): Promise<string> {
   const followUpId = await createDocument(COLLECTIONS.SPARKS_LEAD_FOLLOWUPS, {
-    leadId,
+    leadId: input.leadId,
     date: Timestamp.now(),
-    note,
-    loggedBy,
+    meetingNotes: input.meetingNotes,
+    updatedCount: input.updatedCount,
+    updatedAmount: input.updatedAmount,
+    nextFollowUpDate: input.nextFollowUpDate ? toTimestamp(input.nextFollowUpDate) : undefined,
+    loggedBy: input.loggedBy,
   });
 
-  if (nextFollowUpDate) {
-    await updateDocument(COLLECTIONS.SPARKS_LEADS, leadId, {
-      nextFollowUpDate: toTimestamp(nextFollowUpDate),
-    });
+  const leadUpdate: Record<string, unknown> = {};
+  if (input.nextFollowUpDate) leadUpdate.nextFollowUpDate = toTimestamp(input.nextFollowUpDate);
+  if (input.updatedAmount !== undefined) leadUpdate.quotedAmount = input.updatedAmount;
+  if (Object.keys(leadUpdate).length > 0) {
+    await updateDocument(COLLECTIONS.SPARKS_LEADS, input.leadId, leadUpdate);
   }
 
   return followUpId;

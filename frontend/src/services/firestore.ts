@@ -37,6 +37,7 @@ export const COLLECTIONS = {
   SPARKED_COLLEGES: "sparkedColleges",
   SPARKED_DEPARTMENTS: "sparkedDepartments",
   SPARKED_DEPT_FOLLOWUPS: "sparkedDeptFollowUps",
+  SPARKED_WORKSHOPS: "sparkedWorkshops",
   NOTES: "notes",
   COMMENTS: "comments",
   DOCUMENTS: "documents",

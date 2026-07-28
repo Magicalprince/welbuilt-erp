@@ -533,7 +533,10 @@ export interface SparksLeadFollowUp {
   id: string;
   leadId: string;
   date: Date;
-  note: string;
+  meetingNotes: string;
+  updatedCount?: number;
+  updatedAmount?: number;
+  nextFollowUpDate?: Date;
   loggedBy: string;
   createdAt: Date;
 }
@@ -591,7 +594,10 @@ export interface SparkedDeptFollowUp {
   id: string;
   deptId: string;
   date: Date;
-  note: string;
+  meetingNotes: string;
+  updatedCount?: number;
+  updatedAmount?: number;
+  nextFollowUpDate?: Date;
   loggedBy: string;
   createdAt: Date;
 }
@@ -599,4 +605,77 @@ export interface SparkedDeptFollowUp {
 export interface SparkedCollegeWithDepts {
   college: SparkedCollege;
   departments: SparkedDepartment[];
+}
+
+// ============================================
+// Leads CRM — SparkED Workshops
+// ============================================
+
+export type WorkshopStatus = "SCHEDULED" | "COMPLETED";
+
+export const WORKSHOP_STATUS_LABELS: Record<WorkshopStatus, string> = {
+  SCHEDULED: "Scheduled",
+  COMPLETED: "Completed",
+};
+
+export type WorkshopExpenseCategory =
+  | "FOOD"
+  | "TRAVEL"
+  | "STAY"
+  | "CERTIFICATES"
+  | "SPECIAL_PRIZE"
+  | "TRAINER_FEE"
+  | "MATERIALS"
+  | "MISCELLANEOUS";
+
+export const WORKSHOP_EXPENSE_CATEGORY_LABELS: Record<WorkshopExpenseCategory, string> = {
+  FOOD: "Food",
+  TRAVEL: "Travel",
+  STAY: "Stay / Accommodation",
+  CERTIFICATES: "Certificates",
+  SPECIAL_PRIZE: "Special Prize",
+  TRAINER_FEE: "Trainer / Speaker Fee",
+  MATERIALS: "Materials / Kit",
+  MISCELLANEOUS: "Miscellaneous",
+};
+
+export interface WorkshopExpense {
+  category: WorkshopExpenseCategory;
+  dayAmounts?: number[];
+  totalAmount: number;
+}
+
+export interface Workshop {
+  id: string;
+  deptId: string;
+  collegeId: string;
+  workshopTitle: string;
+  targetYear: string;
+  durationDays: number;
+  startDate: Date;
+  endDate: Date;
+  status: WorkshopStatus;
+  studentCount?: number;
+  costPerStudent?: number;
+  expenses: WorkshopExpense[];
+  notes?: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface WorkshopFinancials {
+  totalEarnings: number;
+  totalExpenses: number;
+  netMargin: number;
+}
+
+export interface SparkedAnalytics {
+  totalColleges: number;
+  mouSignedColleges: number;
+  totalWorkshops: number;
+  totalStudentsTrained: number;
+  totalEarnings: number;
+  totalExpenses: number;
+  netMargin: number;
+  expenseByCategory: Record<WorkshopExpenseCategory, number>;
 }

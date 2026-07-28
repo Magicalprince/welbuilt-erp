@@ -208,7 +208,10 @@ export interface FirestoreSparkedDeptFollowUp {
   id: string;
   deptId: string;
   date: Timestamp;
-  note: string;
+  meetingNotes: string;
+  updatedCount?: number;
+  updatedAmount?: number;
+  nextFollowUpDate?: Timestamp;
   loggedBy: string;
   createdAt: Timestamp;
 }
@@ -217,6 +220,7 @@ function toFollowUp(doc: FirestoreSparkedDeptFollowUp): SparkedDeptFollowUp {
   return {
     ...doc,
     date: doc.date.toDate(),
+    nextFollowUpDate: doc.nextFollowUpDate?.toDate(),
     createdAt: doc.createdAt.toDate(),
   };
 }
@@ -229,23 +233,34 @@ export async function getDeptFollowUps(deptId: string): Promise<SparkedDeptFollo
   return followUps.map(toFollowUp).sort((a, b) => b.date.getTime() - a.date.getTime());
 }
 
-export async function addDeptFollowUp(
-  deptId: string,
-  note: string,
-  loggedBy: string,
-  nextFollowUpDate?: Date
-): Promise<string> {
+export interface AddDeptFollowUpInput {
+  deptId: string;
+  meetingNotes: string;
+  loggedBy: string;
+  updatedCount?: number;
+  updatedAmount?: number;
+  nextFollowUpDate?: Date;
+}
+
+// Logs a follow-up and patches the department's live nextFollowUpDate /
+// approxCount / rateDiscussed when the founder provides updated values.
+export async function addDeptFollowUp(input: AddDeptFollowUpInput): Promise<string> {
   const followUpId = await createDocument(COLLECTIONS.SPARKED_DEPT_FOLLOWUPS, {
-    deptId,
+    deptId: input.deptId,
     date: Timestamp.now(),
-    note,
-    loggedBy,
+    meetingNotes: input.meetingNotes,
+    updatedCount: input.updatedCount,
+    updatedAmount: input.updatedAmount,
+    nextFollowUpDate: input.nextFollowUpDate ? toTimestamp(input.nextFollowUpDate) : undefined,
+    loggedBy: input.loggedBy,
   });
 
-  if (nextFollowUpDate) {
-    await updateDocument(COLLECTIONS.SPARKED_DEPARTMENTS, deptId, {
-      nextFollowUpDate: toTimestamp(nextFollowUpDate),
-    });
+  const deptUpdate: Record<string, unknown> = {};
+  if (input.nextFollowUpDate) deptUpdate.nextFollowUpDate = toTimestamp(input.nextFollowUpDate);
+  if (input.updatedCount !== undefined) deptUpdate.approxCount = input.updatedCount;
+  if (input.updatedAmount !== undefined) deptUpdate.rateDiscussed = input.updatedAmount;
+  if (Object.keys(deptUpdate).length > 0) {
+    await updateDocument(COLLECTIONS.SPARKED_DEPARTMENTS, input.deptId, deptUpdate);
   }
 
   return followUpId;
