@@ -471,6 +471,77 @@ export async function logAttendanceGenerated(
   });
 }
 
+// Lead activity logging (Sparks AI + SparkED)
+
+export async function logLeadCreated(
+  userId: string,
+  leadId: string,
+  leadName: string
+): Promise<string> {
+  return logActivity({
+    userId,
+    action: "CREATE",
+    entityType: "LEAD",
+    entityId: leadId,
+    entityName: leadName,
+    details: `Added lead "${leadName}"`,
+  });
+}
+
+export async function logLeadStatusChanged(
+  userId: string,
+  leadId: string,
+  leadName: string,
+  oldStatus: string,
+  newStatus: string
+): Promise<string> {
+  return logActivity({
+    userId,
+    action: "STATUS_CHANGE",
+    entityType: "LEAD",
+    entityId: leadId,
+    entityName: leadName,
+    details: `Changed status from "${oldStatus}" to "${newStatus}"`,
+    metadata: { oldStatus, newStatus },
+  });
+}
+
+export async function logLeadConverted(
+  userId: string,
+  leadId: string,
+  leadName: string,
+  clientId: string
+): Promise<string> {
+  return logActivity({
+    userId,
+    action: "APPROVE",
+    entityType: "LEAD",
+    entityId: leadId,
+    entityName: leadName,
+    details: `Converted lead "${leadName}" to client`,
+    metadata: { clientId },
+  });
+}
+
+export async function logMouSigned(
+  userId: string,
+  entityId: string,
+  entityName: string,
+  scope: "DEPARTMENT" | "COLLEGE_WIDE"
+): Promise<string> {
+  return logActivity({
+    userId,
+    action: "APPROVE",
+    entityType: "LEAD",
+    entityId,
+    entityName,
+    details: scope === "COLLEGE_WIDE"
+      ? `Signed college-wide MOU for "${entityName}"`
+      : `Signed department MOU for "${entityName}"`,
+    metadata: { scope },
+  });
+}
+
 // Get activity logs for all interns (for admin audit view)
 export async function getInternActivityLogs(): Promise<ActivityLog[]> {
   const logs = await getDocuments<FirestoreActivityLog>(

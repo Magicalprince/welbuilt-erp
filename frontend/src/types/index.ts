@@ -275,7 +275,8 @@ export type ActivityEntityType =
   | "NOTE"
   | "WITHDRAWAL"
   | "USER"
-  | "INTERN";
+  | "INTERN"
+  | "LEAD";
 
 export interface ActivityLog {
   id: string;
@@ -450,4 +451,150 @@ export interface CompanySettings {
   dateFormat: string;
   fiscalYearStart: number;
   updatedAt: Date;
+}
+
+// ============================================
+// Leads CRM — Sparks AI
+// ============================================
+
+export type LeadSource =
+  | "REFERRAL"
+  | "WEBSITE"
+  | "LINKEDIN"
+  | "COLD_OUTREACH"
+  | "REPEAT_CLIENT"
+  | "SOCIAL_MEDIA"
+  | "OTHER";
+
+export const LEAD_SOURCE_LABELS: Record<LeadSource, string> = {
+  REFERRAL: "Referral",
+  WEBSITE: "Website",
+  LINKEDIN: "LinkedIn",
+  COLD_OUTREACH: "Cold Outreach",
+  REPEAT_CLIENT: "Repeat Client",
+  SOCIAL_MEDIA: "Social Media",
+  OTHER: "Other",
+};
+
+export type SparksLeadStatus = "NEW" | "IN_CONVERSATION" | "DROPPED" | "CONVERTED";
+
+export const SPARKS_LEAD_STATUS_LABELS: Record<SparksLeadStatus, string> = {
+  NEW: "New",
+  IN_CONVERSATION: "In Conversation",
+  DROPPED: "Dropped",
+  CONVERTED: "Converted",
+};
+
+export type CommissionType = "PERCENTAGE" | "FIXED";
+export type CommissionStatus = "OWED" | "PAID";
+
+export interface Referrer {
+  id: string;
+  name: string;
+  phone: string;
+  email?: string;
+  notes?: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface ReferrerStats {
+  referrer: Referrer;
+  totalReferred: number;
+  totalConverted: number;
+  commissionOwed: number;
+  commissionPaid: number;
+}
+
+export interface SparksLead {
+  id: string;
+  leadName: string;
+  contactNumber: string;
+  source: LeadSource;
+  projectName: string;
+  description: string;
+  email?: string;
+  address?: string;
+  quotedAmount?: number;
+  quotationNotes?: string;
+  referrerId?: string;
+  commissionType?: CommissionType;
+  commissionValue?: number;
+  commissionStatus?: CommissionStatus;
+  status: SparksLeadStatus;
+  dropReason?: string;
+  nextFollowUpDate?: Date;
+  convertedClientId?: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface SparksLeadFollowUp {
+  id: string;
+  leadId: string;
+  date: Date;
+  note: string;
+  loggedBy: string;
+  createdAt: Date;
+}
+
+// ============================================
+// Leads CRM — SparkED
+// ============================================
+
+export type MouScope = "NONE" | "COLLEGE_WIDE" | "PARTIAL";
+
+export interface SparkedCollege {
+  id: string;
+  collegeName: string;
+  address: string;
+  mouScope: MouScope;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export type SparkedDeptStatus = "NEW" | "IN_CONVERSATION" | "DROPPED" | "CONVERTED" | "MOU_SIGNED";
+
+export const SPARKED_DEPT_STATUS_LABELS: Record<SparkedDeptStatus, string> = {
+  NEW: "New",
+  IN_CONVERSATION: "In Conversation",
+  DROPPED: "Dropped",
+  CONVERTED: "Converted",
+  MOU_SIGNED: "MOU Signed",
+};
+
+export type MouSignedVia = "DEPARTMENT" | "COLLEGE_WIDE";
+
+export interface SparkedDepartment {
+  id: string;
+  collegeId: string;
+  deptName: string;
+  contactName: string;
+  contactNumber: string;
+  contactEmail?: string;
+  dateFirstSpoken: Date;
+  meetingDescription: string;
+  rateDiscussed?: number;
+  approxCount?: number;
+  notes?: string;
+  status: SparkedDeptStatus;
+  dropReason?: string;
+  mouSignedVia?: MouSignedVia;
+  nextFollowUpDate?: Date;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface SparkedDeptFollowUp {
+  id: string;
+  deptId: string;
+  date: Date;
+  note: string;
+  loggedBy: string;
+  createdAt: Date;
+}
+
+export interface SparkedCollegeWithDepts {
+  college: SparkedCollege;
+  departments: SparkedDepartment[];
 }

@@ -14,6 +14,9 @@ import ProjectsPage from "@/pages/projects/ProjectsPage";
 import ProjectDetailPage from "@/pages/projects/ProjectDetailPage";
 import ProjectFormPage from "@/pages/projects/ProjectFormPage";
 
+// Leads Pages
+import LeadsPage from "@/pages/leads/LeadsPage";
+
 // Client Pages
 import ClientsPage from "@/pages/clients/ClientsPage";
 import ClientDetailPage from "@/pages/clients/ClientDetailPage";
@@ -81,6 +84,11 @@ export const router = createBrowserRouter([
       {
         path: "projects/:id/edit",
         element: <ProjectFormPage />,
+      },
+      // Leads
+      {
+        path: "leads",
+        element: <LeadsPage />,
       },
       // Clients
       {

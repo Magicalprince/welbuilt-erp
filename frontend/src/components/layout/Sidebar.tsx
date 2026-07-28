@@ -15,6 +15,7 @@ import {
   ClipboardList,
   BarChart3,
   Clock,
+  Target,
 } from "lucide-react";
 import { Button, LogoWithText, Logo } from "@/components/ui";
 import { useAuthStore } from "@/store/authStore";
@@ -27,6 +28,7 @@ interface SidebarProps {
 const allNavItems = [
   { path: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { path: "/projects", label: "Projects", icon: FolderKanban },
+  { path: "/leads", label: "Leads", icon: Target },
   { path: "/clients", label: "Clients", icon: Users },
   { path: "/finance", label: "Finance", icon: Wallet },
   { path: "/quotations", label: "Quotations", icon: ClipboardList },

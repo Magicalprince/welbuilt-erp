@@ -18,6 +18,7 @@ import {
   Upload,
   StickyNote,
   GraduationCap,
+  Target,
 } from "lucide-react";
 import { Button, Avatar, Input, Skeleton } from "@/components/ui";
 import { cn, getRelativeTime } from "@/lib/utils";
@@ -42,6 +43,7 @@ const getNotificationIcon = (entityType: ActivityLog["entityType"]) => {
     WITHDRAWAL: { icon: Wallet, color: "text-pink-500", bg: "bg-pink-500/10" },
     USER: { icon: User, color: "text-primary", bg: "bg-primary/10" },
     INTERN: { icon: GraduationCap, color: "text-violet-500", bg: "bg-violet-500/10" },
+    LEAD: { icon: Target, color: "text-cyan-500", bg: "bg-cyan-500/10" },
   };
   return iconConfig[entityType] || { icon: FileText, color: "text-muted-foreground", bg: "bg-muted" };
 };
