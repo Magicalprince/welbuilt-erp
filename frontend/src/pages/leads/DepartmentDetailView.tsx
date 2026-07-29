@@ -1,6 +1,6 @@
-import { useState } from "react";
-import { ArrowLeft, AlertCircle, FileSignature, Plus, GraduationCap } from "lucide-react";
-import { Button, Card, CardContent, Badge, Label, Select, Textarea, Skeleton } from "@/components/ui";
+import { useState, useEffect } from "react";
+import { ArrowLeft, AlertCircle, FileSignature, Plus, GraduationCap, Pencil, Check, X } from "lucide-react";
+import { Button, Card, CardContent, Badge, Label, Select, Input, Textarea, Skeleton } from "@/components/ui";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import {
   useSparkedCollege,
@@ -8,12 +8,13 @@ import {
   useAddDeptFollowUp,
   useUpdateDeptFollowUp,
   useDeleteDeptFollowUp,
+  useUpdateDepartment,
   useSignDepartmentMou,
   useDeptFollowUps,
   useWorkshopsByDept,
 } from "@/hooks/useLeads";
 import { getWorkshopFinancials } from "@/services/workshopService";
-import type { SparkedDeptStatus } from "@/types";
+import type { SparkedDepartment, SparkedDeptStatus } from "@/types";
 import { SPARKED_DEPT_STATUS_LABELS, WORKSHOP_STATUS_LABELS } from "@/types";
 import FollowUpTimeline, { type FollowUpEditData } from "@/components/leads/FollowUpTimeline";
 import AddFollowUpForm from "@/components/leads/AddFollowUpForm";
@@ -61,11 +62,13 @@ export default function DepartmentDetailView({
   const addFollowUpMutation = useAddDeptFollowUp();
   const updateFollowUpMutation = useUpdateDeptFollowUp();
   const deleteFollowUpMutation = useDeleteDeptFollowUp();
+  const updateDeptMutation = useUpdateDepartment();
   const signMouMutation = useSignDepartmentMou();
 
   const [isDropPromptOpen, setIsDropPromptOpen] = useState(false);
   const [dropReason, setDropReason] = useState("");
   const [isAddWorkshopOpen, setIsAddWorkshopOpen] = useState(false);
+  const [isEditingInfo, setIsEditingInfo] = useState(false);
 
   const department = collegeData?.departments.find((d) => d.id === deptId);
 
@@ -158,6 +161,16 @@ export default function DepartmentDetailView({
     }
   };
 
+  const handleSaveInfo = async (data: Partial<Omit<SparkedDepartment, "id" | "createdAt" | "updatedAt">>) => {
+    try {
+      await updateDeptMutation.mutateAsync({ id: department.id, data });
+      toast.success("Department updated");
+      setIsEditingInfo(false);
+    } catch {
+      toast.error("Failed to update department");
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-4 flex-wrap">
@@ -189,8 +202,36 @@ export default function DepartmentDetailView({
         <div className="lg:col-span-2 space-y-6">
           <Card>
             <CardContent className="p-6 space-y-4">
-              <h3 className="font-medium">Department Info</h3>
+              <div className="flex items-center justify-between">
+                <h3 className="font-medium">Department Info</h3>
+                {!isEditingInfo && (
+                  <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title="Edit" onClick={() => setIsEditingInfo(true)}>
+                    <Pencil className="h-3.5 w-3.5" />
+                  </Button>
+                )}
+              </div>
+
+              {isEditingInfo ? (
+                <EditDepartmentInfoForm
+                  department={department}
+                  onSave={handleSaveInfo}
+                  onCancel={() => setIsEditingInfo(false)}
+                  isSaving={updateDeptMutation.isPending}
+                />
+              ) : (
               <div className="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <p className="text-muted-foreground">Department Name</p>
+                  <p className="font-medium">{department.deptName}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Contact Name</p>
+                  <p className="font-medium">{department.contactName}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Contact Number</p>
+                  <p className="font-medium">{department.contactNumber}</p>
+                </div>
                 <div>
                   <p className="text-muted-foreground">Contact Email</p>
                   <p className="font-medium">{department.contactEmail || "—"}</p>
@@ -205,28 +246,22 @@ export default function DepartmentDetailView({
                     {department.approachedByName} · {department.approachedByNumber}
                   </p>
                 </div>
-                {department.rateDiscussed !== undefined && (
-                  <div>
-                    <p className="text-muted-foreground">Rate Discussed</p>
-                    <p className="font-medium">{formatCurrency(department.rateDiscussed)}</p>
-                  </div>
-                )}
-                {department.approxCount !== undefined && (
-                  <div>
-                    <p className="text-muted-foreground">Approx. Count</p>
-                    <p className="font-medium">~{department.approxCount} students</p>
-                  </div>
-                )}
+                <div>
+                  <p className="text-muted-foreground">Rate Discussed</p>
+                  <p className="font-medium">{department.rateDiscussed !== undefined ? formatCurrency(department.rateDiscussed) : "—"}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Approx. Count</p>
+                  <p className="font-medium">{department.approxCount !== undefined ? `~${department.approxCount} students` : "—"}</p>
+                </div>
                 <div className="col-span-2">
                   <p className="text-muted-foreground">Meeting Notes</p>
                   <p className="font-medium whitespace-pre-wrap">{department.meetingDescription}</p>
                 </div>
-                {department.notes && (
-                  <div className="col-span-2">
-                    <p className="text-muted-foreground">Notes</p>
-                    <p className="font-medium whitespace-pre-wrap">{department.notes}</p>
-                  </div>
-                )}
+                <div className="col-span-2">
+                  <p className="text-muted-foreground">Notes</p>
+                  <p className="font-medium whitespace-pre-wrap">{department.notes || "—"}</p>
+                </div>
                 {department.status === "DROPPED" && department.dropReason && (
                   <div className="col-span-2">
                     <p className="text-muted-foreground">Drop Reason</p>
@@ -234,6 +269,7 @@ export default function DepartmentDetailView({
                   </div>
                 )}
               </div>
+              )}
             </CardContent>
           </Card>
 
@@ -364,6 +400,137 @@ export default function DepartmentDetailView({
           onClose={() => setIsAddWorkshopOpen(false)}
         />
       )}
+    </div>
+  );
+}
+
+// ============================================
+// Edit Department Info Form
+// ============================================
+function EditDepartmentInfoForm({
+  department,
+  onSave,
+  onCancel,
+  isSaving,
+}: {
+  department: SparkedDepartment;
+  onSave: (data: Partial<Omit<SparkedDepartment, "id" | "createdAt" | "updatedAt">>) => Promise<void>;
+  onCancel: () => void;
+  isSaving: boolean;
+}) {
+  const buildForm = () => ({
+    deptName: department.deptName,
+    contactName: department.contactName,
+    contactNumber: department.contactNumber,
+    contactEmail: department.contactEmail || "",
+    approachedByName: department.approachedByName,
+    approachedByNumber: department.approachedByNumber,
+    dateFirstSpoken: department.dateFirstSpoken.toISOString().split("T")[0],
+    meetingDescription: department.meetingDescription,
+    rateDiscussed: department.rateDiscussed !== undefined ? String(department.rateDiscussed) : "",
+    approxCount: department.approxCount !== undefined ? String(department.approxCount) : "",
+    notes: department.notes || "",
+  });
+
+  const [formData, setFormData] = useState(buildForm);
+
+  useEffect(() => {
+    setFormData(buildForm());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [department.id]);
+
+  const handleSubmit = async () => {
+    if (
+      !formData.deptName.trim() ||
+      !formData.contactName.trim() ||
+      !formData.contactNumber.trim() ||
+      !formData.approachedByName.trim() ||
+      !formData.approachedByNumber.trim() ||
+      !formData.dateFirstSpoken ||
+      !formData.meetingDescription.trim()
+    ) {
+      toast.error("Please fill all required fields");
+      return;
+    }
+    await onSave({
+      deptName: formData.deptName.trim(),
+      contactName: formData.contactName.trim(),
+      contactNumber: formData.contactNumber.trim(),
+      contactEmail: formData.contactEmail.trim() || undefined,
+      approachedByName: formData.approachedByName.trim(),
+      approachedByNumber: formData.approachedByNumber.trim(),
+      dateFirstSpoken: new Date(formData.dateFirstSpoken),
+      meetingDescription: formData.meetingDescription.trim(),
+      rateDiscussed: formData.rateDiscussed ? Number(formData.rateDiscussed) : undefined,
+      approxCount: formData.approxCount ? Number(formData.approxCount) : undefined,
+      notes: formData.notes.trim() || undefined,
+    });
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 gap-4">
+        <div className="col-span-2">
+          <Label>Department Name *</Label>
+          <Input value={formData.deptName} onChange={(e) => setFormData({ ...formData, deptName: e.target.value })} />
+        </div>
+        <div>
+          <Label>Contact Name *</Label>
+          <Input value={formData.contactName} onChange={(e) => setFormData({ ...formData, contactName: e.target.value })} />
+        </div>
+        <div>
+          <Label>Contact Number *</Label>
+          <Input value={formData.contactNumber} onChange={(e) => setFormData({ ...formData, contactNumber: e.target.value })} />
+        </div>
+        <div className="col-span-2">
+          <Label>Contact Email</Label>
+          <Input type="email" value={formData.contactEmail} onChange={(e) => setFormData({ ...formData, contactEmail: e.target.value })} />
+        </div>
+
+        <div className="col-span-2 border-t pt-4 mt-2">
+          <h4 className="font-medium mb-3">Our Point of Contact</h4>
+        </div>
+        <div>
+          <Label>Approached By *</Label>
+          <Input value={formData.approachedByName} onChange={(e) => setFormData({ ...formData, approachedByName: e.target.value })} />
+        </div>
+        <div>
+          <Label>Approached By Number *</Label>
+          <Input value={formData.approachedByNumber} onChange={(e) => setFormData({ ...formData, approachedByNumber: e.target.value })} />
+        </div>
+
+        <div>
+          <Label>Date First Spoken *</Label>
+          <Input type="date" value={formData.dateFirstSpoken} onChange={(e) => setFormData({ ...formData, dateFirstSpoken: e.target.value })} />
+        </div>
+        <div>
+          <Label>Rate Discussed (₹)</Label>
+          <Input type="number" value={formData.rateDiscussed} onChange={(e) => setFormData({ ...formData, rateDiscussed: e.target.value })} />
+        </div>
+        <div className="col-span-2">
+          <Label>Meeting Notes *</Label>
+          <Textarea value={formData.meetingDescription} onChange={(e) => setFormData({ ...formData, meetingDescription: e.target.value })} />
+        </div>
+        <div>
+          <Label>Approx. Count</Label>
+          <Input type="number" value={formData.approxCount} onChange={(e) => setFormData({ ...formData, approxCount: e.target.value })} />
+        </div>
+        <div className="col-span-2">
+          <Label>Notes</Label>
+          <Textarea value={formData.notes} onChange={(e) => setFormData({ ...formData, notes: e.target.value })} />
+        </div>
+      </div>
+
+      <div className="flex justify-end gap-2 pt-2">
+        <Button variant="outline" size="sm" onClick={onCancel} disabled={isSaving}>
+          <X className="h-3.5 w-3.5 mr-1" />
+          Cancel
+        </Button>
+        <Button size="sm" onClick={handleSubmit} disabled={isSaving}>
+          <Check className="h-3.5 w-3.5 mr-1" />
+          {isSaving ? "Saving..." : "Save"}
+        </Button>
+      </div>
     </div>
   );
 }

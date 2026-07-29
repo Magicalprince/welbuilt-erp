@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, AlertCircle, Loader2 } from "lucide-react";
-import { Button, Card, CardContent, Badge, Label, Select, Textarea, Modal } from "@/components/ui";
+import { ArrowLeft, AlertCircle, Loader2, Pencil, Check, X } from "lucide-react";
+import { Button, Card, CardContent, Badge, Label, Select, Input, Textarea, Modal } from "@/components/ui";
 import { formatCurrency } from "@/lib/utils";
 import {
   useSparksLeadFollowUps,
@@ -9,10 +9,11 @@ import {
   useAddSparksLeadFollowUp,
   useUpdateSparksLeadFollowUp,
   useDeleteSparksLeadFollowUp,
+  useUpdateSparksLead,
   useFindMatchingClient,
   useConvertSparksLead,
 } from "@/hooks/useLeads";
-import type { SparksLead, SparksLeadStatus } from "@/types";
+import type { SparksLead, SparksLeadStatus, LeadSource, CommissionType, CommissionStatus } from "@/types";
 import { LEAD_SOURCE_LABELS, SPARKS_LEAD_STATUS_LABELS } from "@/types";
 import FollowUpTimeline, { type FollowUpEditData } from "@/components/leads/FollowUpTimeline";
 import AddFollowUpForm from "@/components/leads/AddFollowUpForm";
@@ -55,10 +56,12 @@ export default function LeadDetailView({ lead, onBack }: LeadDetailViewProps) {
   const deleteFollowUpMutation = useDeleteSparksLeadFollowUp();
   const findMatchMutation = useFindMatchingClient();
   const convertMutation = useConvertSparksLead();
+  const updateLeadMutation = useUpdateSparksLead();
 
   const [isDropPromptOpen, setIsDropPromptOpen] = useState(false);
   const [dropReason, setDropReason] = useState("");
   const [matchResult, setMatchResult] = useState<{ id: string; companyName: string } | "none" | null>(null);
+  const [isEditingInfo, setIsEditingInfo] = useState(false);
 
   const handleStatusChange = async (newStatus: SparksLeadStatus) => {
     if (newStatus === lead.status) return;
@@ -149,6 +152,16 @@ export default function LeadDetailView({ lead, onBack }: LeadDetailViewProps) {
     }
   };
 
+  const handleSaveInfo = async (data: Partial<Omit<SparksLead, "id" | "createdAt" | "updatedAt">>) => {
+    try {
+      await updateLeadMutation.mutateAsync({ id: lead.id, data });
+      toast.success("Lead updated");
+      setIsEditingInfo(false);
+    } catch {
+      toast.error("Failed to update lead");
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-start gap-4">
@@ -170,63 +183,77 @@ export default function LeadDetailView({ lead, onBack }: LeadDetailViewProps) {
         <div className="lg:col-span-2 space-y-6">
           <Card>
             <CardContent className="p-6 space-y-4">
-              <h3 className="font-medium">Lead Info</h3>
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div>
-                  <p className="text-muted-foreground">Contact Number</p>
-                  <p className="font-medium">{lead.contactNumber}</p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground">Email</p>
-                  <p className="font-medium">{lead.email || "—"}</p>
-                </div>
-                <div className="col-span-2">
-                  <p className="text-muted-foreground">Description</p>
-                  <p className="font-medium whitespace-pre-wrap">{lead.description}</p>
-                </div>
-                {lead.address && (
-                  <div className="col-span-2">
-                    <p className="text-muted-foreground">Address</p>
-                    <p className="font-medium">{lead.address}</p>
-                  </div>
-                )}
-                {lead.quotedAmount !== undefined && (
-                  <div>
-                    <p className="text-muted-foreground">Quoted Amount</p>
-                    <p className="font-medium">{formatCurrency(lead.quotedAmount)}</p>
-                  </div>
-                )}
-                {lead.quotationNotes && (
-                  <div className="col-span-2">
-                    <p className="text-muted-foreground">Quotation Notes</p>
-                    <p className="font-medium">{lead.quotationNotes}</p>
-                  </div>
-                )}
-                {lead.commissionType && (
-                  <>
-                    <div>
-                      <p className="text-muted-foreground">Commission</p>
-                      <p className="font-medium">
-                        {lead.commissionType === "PERCENTAGE"
-                          ? `${lead.commissionValue}%`
-                          : formatCurrency(lead.commissionValue || 0)}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-muted-foreground">Commission Status</p>
-                      <Badge variant={lead.commissionStatus === "PAID" ? "success" : "warning"} className="mt-0.5">
-                        {lead.commissionStatus}
-                      </Badge>
-                    </div>
-                  </>
-                )}
-                {lead.status === "DROPPED" && lead.dropReason && (
-                  <div className="col-span-2">
-                    <p className="text-muted-foreground">Drop Reason</p>
-                    <p className="font-medium">{lead.dropReason}</p>
-                  </div>
+              <div className="flex items-center justify-between">
+                <h3 className="font-medium">Lead Info</h3>
+                {!isEditingInfo && (
+                  <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title="Edit" onClick={() => setIsEditingInfo(true)}>
+                    <Pencil className="h-3.5 w-3.5" />
+                  </Button>
                 )}
               </div>
+
+              {isEditingInfo ? (
+                <EditLeadInfoForm lead={lead} onSave={handleSaveInfo} onCancel={() => setIsEditingInfo(false)} isSaving={updateLeadMutation.isPending} />
+              ) : (
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <p className="text-muted-foreground">Contact Number</p>
+                    <p className="font-medium">{lead.contactNumber}</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Email</p>
+                    <p className="font-medium">{lead.email || "—"}</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Source</p>
+                    <p className="font-medium">{LEAD_SOURCE_LABELS[lead.source]}</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Project Name</p>
+                    <p className="font-medium">{lead.projectName}</p>
+                  </div>
+                  <div className="col-span-2">
+                    <p className="text-muted-foreground">Description</p>
+                    <p className="font-medium whitespace-pre-wrap">{lead.description}</p>
+                  </div>
+                  <div className="col-span-2">
+                    <p className="text-muted-foreground">Address</p>
+                    <p className="font-medium">{lead.address || "—"}</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Quoted Amount</p>
+                    <p className="font-medium">{lead.quotedAmount !== undefined ? formatCurrency(lead.quotedAmount) : "—"}</p>
+                  </div>
+                  <div className="col-span-2">
+                    <p className="text-muted-foreground">Quotation Notes</p>
+                    <p className="font-medium">{lead.quotationNotes || "—"}</p>
+                  </div>
+                  {lead.commissionType && (
+                    <>
+                      <div>
+                        <p className="text-muted-foreground">Commission</p>
+                        <p className="font-medium">
+                          {lead.commissionType === "PERCENTAGE"
+                            ? `${lead.commissionValue}%`
+                            : formatCurrency(lead.commissionValue || 0)}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground">Commission Status</p>
+                        <Badge variant={lead.commissionStatus === "PAID" ? "success" : "warning"} className="mt-0.5">
+                          {lead.commissionStatus}
+                        </Badge>
+                      </div>
+                    </>
+                  )}
+                  {lead.status === "DROPPED" && lead.dropReason && (
+                    <div className="col-span-2">
+                      <p className="text-muted-foreground">Drop Reason</p>
+                      <p className="font-medium">{lead.dropReason}</p>
+                    </div>
+                  )}
+                </div>
+              )}
             </CardContent>
           </Card>
 
@@ -349,6 +376,154 @@ export default function LeadDetailView({ lead, onBack }: LeadDetailViewProps) {
           </div>
         ) : null}
       </Modal>
+    </div>
+  );
+}
+
+// ============================================
+// Edit Lead Info Form
+// ============================================
+function EditLeadInfoForm({
+  lead,
+  onSave,
+  onCancel,
+  isSaving,
+}: {
+  lead: SparksLead;
+  onSave: (data: Partial<Omit<SparksLead, "id" | "createdAt" | "updatedAt">>) => Promise<void>;
+  onCancel: () => void;
+  isSaving: boolean;
+}) {
+  const buildForm = () => ({
+    leadName: lead.leadName,
+    contactNumber: lead.contactNumber,
+    source: lead.source,
+    projectName: lead.projectName,
+    description: lead.description,
+    email: lead.email || "",
+    address: lead.address || "",
+    quotedAmount: lead.quotedAmount !== undefined ? String(lead.quotedAmount) : "",
+    quotationNotes: lead.quotationNotes || "",
+    commissionType: lead.commissionType || ("PERCENTAGE" as CommissionType),
+    commissionValue: lead.commissionValue !== undefined ? String(lead.commissionValue) : "",
+    commissionStatus: lead.commissionStatus || ("OWED" as CommissionStatus),
+  });
+
+  const [formData, setFormData] = useState(buildForm);
+
+  useEffect(() => {
+    setFormData(buildForm());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lead.id]);
+
+  const handleSubmit = async () => {
+    if (!formData.leadName.trim() || !formData.contactNumber.trim() || !formData.projectName.trim() || !formData.description.trim()) {
+      toast.error("Please fill all required fields");
+      return;
+    }
+    await onSave({
+      leadName: formData.leadName.trim(),
+      contactNumber: formData.contactNumber.trim(),
+      source: formData.source,
+      projectName: formData.projectName.trim(),
+      description: formData.description.trim(),
+      email: formData.email.trim() || undefined,
+      address: formData.address.trim() || undefined,
+      quotedAmount: formData.quotedAmount ? Number(formData.quotedAmount) : undefined,
+      quotationNotes: formData.quotationNotes.trim() || undefined,
+      commissionType: formData.source === "REFERRAL" ? formData.commissionType : undefined,
+      commissionValue:
+        formData.source === "REFERRAL" && formData.commissionValue ? Number(formData.commissionValue) : undefined,
+      commissionStatus: formData.source === "REFERRAL" ? formData.commissionStatus : undefined,
+    });
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 gap-4">
+        <div className="col-span-2">
+          <Label>Lead Name *</Label>
+          <Input value={formData.leadName} onChange={(e) => setFormData({ ...formData, leadName: e.target.value })} />
+        </div>
+        <div>
+          <Label>Contact Number *</Label>
+          <Input value={formData.contactNumber} onChange={(e) => setFormData({ ...formData, contactNumber: e.target.value })} />
+        </div>
+        <div>
+          <Label>Source *</Label>
+          <Select
+            value={formData.source}
+            onChange={(e) => setFormData({ ...formData, source: e.target.value as LeadSource })}
+            options={(Object.keys(LEAD_SOURCE_LABELS) as LeadSource[]).map((s) => ({ value: s, label: LEAD_SOURCE_LABELS[s] }))}
+          />
+        </div>
+        <div className="col-span-2">
+          <Label>Project Name *</Label>
+          <Input value={formData.projectName} onChange={(e) => setFormData({ ...formData, projectName: e.target.value })} />
+        </div>
+        <div className="col-span-2">
+          <Label>Description *</Label>
+          <Textarea value={formData.description} onChange={(e) => setFormData({ ...formData, description: e.target.value })} />
+        </div>
+        <div>
+          <Label>Email</Label>
+          <Input type="email" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} />
+        </div>
+        <div>
+          <Label>Address</Label>
+          <Input value={formData.address} onChange={(e) => setFormData({ ...formData, address: e.target.value })} />
+        </div>
+        <div>
+          <Label>Quoted Amount (₹)</Label>
+          <Input type="number" value={formData.quotedAmount} onChange={(e) => setFormData({ ...formData, quotedAmount: e.target.value })} />
+        </div>
+        <div className="col-span-2">
+          <Label>Quotation Notes</Label>
+          <Textarea value={formData.quotationNotes} onChange={(e) => setFormData({ ...formData, quotationNotes: e.target.value })} />
+        </div>
+
+        {formData.source === "REFERRAL" && (
+          <div className="col-span-2 border-t pt-4 mt-2 grid grid-cols-2 gap-4">
+            <div>
+              <Label>Commission Type</Label>
+              <Select
+                value={formData.commissionType}
+                onChange={(e) => setFormData({ ...formData, commissionType: e.target.value as CommissionType })}
+                options={[
+                  { value: "PERCENTAGE", label: "Percentage" },
+                  { value: "FIXED", label: "Fixed" },
+                ]}
+              />
+            </div>
+            <div>
+              <Label>Commission Value</Label>
+              <Input type="number" value={formData.commissionValue} onChange={(e) => setFormData({ ...formData, commissionValue: e.target.value })} />
+            </div>
+            <div className="col-span-2">
+              <Label>Commission Status</Label>
+              <Select
+                value={formData.commissionStatus}
+                onChange={(e) => setFormData({ ...formData, commissionStatus: e.target.value as CommissionStatus })}
+                options={[
+                  { value: "OWED", label: "Owed" },
+                  { value: "PAID", label: "Paid" },
+                ]}
+              />
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="flex justify-end gap-2 pt-2">
+        <Button variant="outline" size="sm" onClick={onCancel} disabled={isSaving}>
+          <X className="h-3.5 w-3.5 mr-1" />
+          Cancel
+        </Button>
+        <Button size="sm" onClick={handleSubmit} disabled={isSaving}>
+          <Check className="h-3.5 w-3.5 mr-1" />
+          {isSaving ? "Saving..." : "Save"}
+        </Button>
+      </div>
     </div>
   );
 }

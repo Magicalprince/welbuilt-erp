@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { ArrowLeft, Plus, FileSignature, MapPin, Trash2 } from "lucide-react";
+import { useState, useEffect } from "react";
+import { ArrowLeft, Plus, FileSignature, MapPin, Trash2, Pencil, Check, X } from "lucide-react";
 import { Button, Card, CardContent, Badge, Skeleton, Modal, Label, Input, Textarea } from "@/components/ui";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import {
@@ -7,8 +7,9 @@ import {
   useCreateDepartment,
   useSignCollegeWideMou,
   useDeleteDepartment,
+  useUpdateCollege,
 } from "@/hooks/useLeads";
-import type { SparkedDepartment, SparkedDeptStatus } from "@/types";
+import type { SparkedCollege, SparkedDepartment, SparkedDeptStatus } from "@/types";
 import { SPARKED_DEPT_STATUS_LABELS } from "@/types";
 import toast from "react-hot-toast";
 
@@ -37,10 +38,12 @@ export default function CollegeDetailView({ collegeId, onBack, onOpenDepartment 
   const { data, isLoading } = useSparkedCollege(collegeId);
   const signCollegeWideMutation = useSignCollegeWideMou();
   const deleteDeptMutation = useDeleteDepartment();
+  const updateCollegeMutation = useUpdateCollege();
 
   const [isAddDeptOpen, setIsAddDeptOpen] = useState(false);
   const [isMouConfirmOpen, setIsMouConfirmOpen] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<SparkedDepartment | null>(null);
+  const [isEditingInfo, setIsEditingInfo] = useState(false);
 
   const college = data?.college;
   const departments = data?.departments || [];
@@ -68,6 +71,16 @@ export default function CollegeDetailView({ collegeId, onBack, onOpenDepartment 
     }
   };
 
+  const handleSaveInfo = async (data: Partial<Omit<SparkedCollege, "id" | "createdAt" | "updatedAt">>) => {
+    try {
+      await updateCollegeMutation.mutateAsync({ id: collegeId, data });
+      toast.success("College updated");
+      setIsEditingInfo(false);
+    } catch {
+      toast.error("Failed to update college");
+    }
+  };
+
   if (isLoading || !college) {
     return (
       <div className="space-y-4">
@@ -80,19 +93,35 @@ export default function CollegeDetailView({ collegeId, onBack, onOpenDepartment 
   return (
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-4 flex-wrap">
-        <div className="flex items-start gap-4">
+        <div className="flex items-start gap-4 flex-1 min-w-0">
           <Button variant="ghost" size="icon" onClick={onBack}>
             <ArrowLeft className="h-5 w-5" />
           </Button>
-          <div className="min-w-0">
-            <h1 className="text-2xl font-bold truncate">{college.collegeName}</h1>
-            <div className="flex items-center gap-1.5 text-sm text-muted-foreground mt-1">
-              <MapPin className="h-3.5 w-3.5 shrink-0" />
-              <span>{college.address}</span>
+          {isEditingInfo ? (
+            <div className="flex-1 min-w-0 max-w-md">
+              <EditCollegeInfoForm
+                college={college}
+                onSave={handleSaveInfo}
+                onCancel={() => setIsEditingInfo(false)}
+                isSaving={updateCollegeMutation.isPending}
+              />
             </div>
-          </div>
+          ) : (
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <h1 className="text-2xl font-bold truncate">{college.collegeName}</h1>
+                <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title="Edit" onClick={() => setIsEditingInfo(true)}>
+                  <Pencil className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+              <div className="flex items-center gap-1.5 text-sm text-muted-foreground mt-1">
+                <MapPin className="h-3.5 w-3.5 shrink-0" />
+                <span>{college.address}</span>
+              </div>
+            </div>
+          )}
         </div>
-        {hasUnsignedDept && departments.length > 0 && (
+        {!isEditingInfo && hasUnsignedDept && departments.length > 0 && (
           <Button
             variant="outline"
             onClick={() => setIsMouConfirmOpen(true)}
@@ -381,5 +410,59 @@ function AddDepartmentModal({
         </div>
       </div>
     </Modal>
+  );
+}
+
+// ============================================
+// Edit College Info Form
+// ============================================
+function EditCollegeInfoForm({
+  college,
+  onSave,
+  onCancel,
+  isSaving,
+}: {
+  college: SparkedCollege;
+  onSave: (data: Partial<Omit<SparkedCollege, "id" | "createdAt" | "updatedAt">>) => Promise<void>;
+  onCancel: () => void;
+  isSaving: boolean;
+}) {
+  const buildForm = () => ({ collegeName: college.collegeName, address: college.address });
+  const [formData, setFormData] = useState(buildForm);
+
+  useEffect(() => {
+    setFormData(buildForm());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [college.id]);
+
+  const handleSubmit = async () => {
+    if (!formData.collegeName.trim() || !formData.address.trim()) {
+      toast.error("Please fill all required fields");
+      return;
+    }
+    await onSave({ collegeName: formData.collegeName.trim(), address: formData.address.trim() });
+  };
+
+  return (
+    <div className="space-y-2 p-3 border rounded-lg bg-card">
+      <div>
+        <Label className="text-xs">College Name *</Label>
+        <Input value={formData.collegeName} onChange={(e) => setFormData({ ...formData, collegeName: e.target.value })} />
+      </div>
+      <div>
+        <Label className="text-xs">Address *</Label>
+        <Textarea value={formData.address} onChange={(e) => setFormData({ ...formData, address: e.target.value })} className="min-h-[60px]" />
+      </div>
+      <div className="flex justify-end gap-2 pt-1">
+        <Button variant="outline" size="sm" onClick={onCancel} disabled={isSaving}>
+          <X className="h-3.5 w-3.5 mr-1" />
+          Cancel
+        </Button>
+        <Button size="sm" onClick={handleSubmit} disabled={isSaving}>
+          <Check className="h-3.5 w-3.5 mr-1" />
+          {isSaving ? "Saving..." : "Save"}
+        </Button>
+      </div>
+    </div>
   );
 }
