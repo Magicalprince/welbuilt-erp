@@ -185,20 +185,24 @@ export async function addFollowUp(input: AddFollowUpInput): Promise<string> {
 }
 
 export interface UpdateFollowUpInput {
+  date: Date;
   meetingNotes: string;
   updatedCount?: number;
   updatedAmount?: number;
   nextFollowUpDate?: Date;
 }
 
-// Corrects a historical follow-up entry. Does NOT re-patch the lead's live
-// quotedAmount/nextFollowUpDate — those were already updated when the
-// follow-up was first logged; editing only fixes the record itself.
+// Corrects a historical follow-up entry, including the date it was logged
+// (distinct from nextFollowUpDate, when the lead asked to meet again).
+// Does NOT re-patch the lead's live quotedAmount/nextFollowUpDate — those
+// were already updated when the follow-up was first logged; editing only
+// fixes the record itself.
 export async function updateFollowUp(
   followUpId: string,
   input: UpdateFollowUpInput
 ): Promise<void> {
   await updateDocument(COLLECTIONS.SPARKS_LEAD_FOLLOWUPS, followUpId, {
+    date: toTimestamp(input.date),
     meetingNotes: input.meetingNotes,
     updatedCount: input.updatedCount,
     updatedAmount: input.updatedAmount,

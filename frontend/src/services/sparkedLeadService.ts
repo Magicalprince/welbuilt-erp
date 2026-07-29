@@ -270,20 +270,24 @@ export async function addDeptFollowUp(input: AddDeptFollowUpInput): Promise<stri
 }
 
 export interface UpdateDeptFollowUpInput {
+  date: Date;
   meetingNotes: string;
   updatedCount?: number;
   updatedAmount?: number;
   nextFollowUpDate?: Date;
 }
 
-// Corrects a historical follow-up entry. Does NOT re-patch the department's
-// live approxCount/rateDiscussed/nextFollowUpDate — those were already
-// updated when the follow-up was first logged; editing only fixes the record.
+// Corrects a historical follow-up entry, including the date it was logged
+// (distinct from nextFollowUpDate, when the college asked to meet again).
+// Does NOT re-patch the department's live approxCount/rateDiscussed/
+// nextFollowUpDate — those were already updated when the follow-up was
+// first logged; editing only fixes the record.
 export async function updateDeptFollowUp(
   followUpId: string,
   input: UpdateDeptFollowUpInput
 ): Promise<void> {
   await updateDocument(COLLECTIONS.SPARKED_DEPT_FOLLOWUPS, followUpId, {
+    date: toTimestamp(input.date),
     meetingNotes: input.meetingNotes,
     updatedCount: input.updatedCount,
     updatedAmount: input.updatedAmount,

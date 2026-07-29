@@ -15,7 +15,7 @@ import {
 import { getWorkshopFinancials } from "@/services/workshopService";
 import type { SparkedDeptStatus } from "@/types";
 import { SPARKED_DEPT_STATUS_LABELS, WORKSHOP_STATUS_LABELS } from "@/types";
-import FollowUpTimeline from "@/components/leads/FollowUpTimeline";
+import FollowUpTimeline, { type FollowUpEditData } from "@/components/leads/FollowUpTimeline";
 import AddFollowUpForm from "@/components/leads/AddFollowUpForm";
 import AddWorkshopModal from "./AddWorkshopModal";
 import toast from "react-hot-toast";
@@ -140,12 +140,7 @@ export default function DepartmentDetailView({
     }
   };
 
-  const handleEditFollowUp = async (followUpId: string, data: {
-    meetingNotes: string;
-    updatedCount?: number;
-    updatedAmount?: number;
-    nextFollowUpDate?: Date;
-  }) => {
+  const handleEditFollowUp = async (followUpId: string, data: FollowUpEditData) => {
     try {
       await updateFollowUpMutation.mutateAsync({ followUpId, deptId: department.id, data });
       toast.success("Follow-up updated");

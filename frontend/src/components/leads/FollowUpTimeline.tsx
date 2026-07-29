@@ -15,6 +15,7 @@ export interface FollowUpLike {
 }
 
 export interface FollowUpEditData {
+  date: Date;
   meetingNotes: string;
   updatedCount?: number;
   updatedAmount?: number;
@@ -227,6 +228,7 @@ function EditFollowUpRow({
   onCancel: () => void;
   onSave: (data: FollowUpEditData) => Promise<void>;
 }) {
+  const [date, setDate] = useState(entry.date.toISOString().split("T")[0]);
   const [meetingNotes, setMeetingNotes] = useState(entry.meetingNotes);
   const [count, setCount] = useState(entry.updatedCount !== undefined ? String(entry.updatedCount) : "");
   const [amount, setAmount] = useState(entry.updatedAmount !== undefined ? String(entry.updatedAmount) : "");
@@ -236,10 +238,11 @@ function EditFollowUpRow({
   const [isSaving, setIsSaving] = useState(false);
 
   const handleSave = async () => {
-    if (!meetingNotes.trim()) return;
+    if (!meetingNotes.trim() || !date) return;
     setIsSaving(true);
     try {
       await onSave({
+        date: new Date(date),
         meetingNotes: meetingNotes.trim(),
         updatedCount: showCount && count !== "" ? Number(count) : undefined,
         updatedAmount: amount !== "" ? Number(amount) : undefined,
@@ -254,8 +257,14 @@ function EditFollowUpRow({
     <div className="relative">
       <span className="absolute -left-[29px] top-1.5 h-2.5 w-2.5 rounded-full bg-primary ring-4 ring-background" />
       <div className="p-3 border rounded-lg bg-card space-y-3">
-        <Label className="text-xs">Meeting Notes</Label>
-        <Textarea value={meetingNotes} onChange={(e) => setMeetingNotes(e.target.value)} className="min-h-[70px]" />
+        <div>
+          <Label className="text-xs">Logged Date</Label>
+          <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+        </div>
+        <div>
+          <Label className="text-xs">Meeting Notes</Label>
+          <Textarea value={meetingNotes} onChange={(e) => setMeetingNotes(e.target.value)} className="min-h-[70px]" />
+        </div>
         <div className={showCount ? "grid grid-cols-1 sm:grid-cols-3 gap-3" : "grid grid-cols-1 sm:grid-cols-2 gap-3"}>
           {showCount && (
             <div>
@@ -277,7 +286,7 @@ function EditFollowUpRow({
             <X className="h-3.5 w-3.5 mr-1" />
             Cancel
           </Button>
-          <Button size="sm" onClick={handleSave} disabled={isSaving || !meetingNotes.trim()}>
+          <Button size="sm" onClick={handleSave} disabled={isSaving || !meetingNotes.trim() || !date}>
             <Check className="h-3.5 w-3.5 mr-1" />
             {isSaving ? "Saving..." : "Save"}
           </Button>

@@ -14,7 +14,7 @@ import {
 } from "@/hooks/useLeads";
 import type { SparksLead, SparksLeadStatus } from "@/types";
 import { LEAD_SOURCE_LABELS, SPARKS_LEAD_STATUS_LABELS } from "@/types";
-import FollowUpTimeline from "@/components/leads/FollowUpTimeline";
+import FollowUpTimeline, { type FollowUpEditData } from "@/components/leads/FollowUpTimeline";
 import AddFollowUpForm from "@/components/leads/AddFollowUpForm";
 import toast from "react-hot-toast";
 
@@ -131,12 +131,7 @@ export default function LeadDetailView({ lead, onBack }: LeadDetailViewProps) {
     }
   };
 
-  const handleEditFollowUp = async (followUpId: string, data: {
-    meetingNotes: string;
-    updatedCount?: number;
-    updatedAmount?: number;
-    nextFollowUpDate?: Date;
-  }) => {
+  const handleEditFollowUp = async (followUpId: string, data: FollowUpEditData) => {
     try {
       await updateFollowUpMutation.mutateAsync({ followUpId, leadId: lead.id, data });
       toast.success("Follow-up updated");
