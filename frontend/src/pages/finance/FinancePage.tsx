@@ -195,7 +195,7 @@ export default function FinancePage() {
                 <button
                   type="button"
                   onClick={() => setIsChartExpanded(true)}
-                  className="w-full text-left cursor-zoom-in rounded-lg transition-opacity hover:opacity-90"
+                  className="w-full text-left cursor-zoom-in rounded-lg outline-none transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                   title="Click to view full history"
                 >
                   <ComparisonAreaChart data={recentHistory} height={220} />
