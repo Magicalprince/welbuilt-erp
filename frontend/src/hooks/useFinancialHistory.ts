@@ -25,8 +25,9 @@ export function useFinancialHistory() {
     if (!expenses && !incomes) return [];
 
     const buckets: Record<string, MonthlyFinancialPoint> = {};
-    const currentYear = new Date().getFullYear();
 
+    // Every label always carries its year (e.g. "Aug '26") — history can
+    // span many years, so two different Augusts must never look identical.
     const bucketFor = (date: Date): MonthlyFinancialPoint => {
       const key = `${date.getFullYear()}-${date.getMonth()}`;
       if (!buckets[key]) {
@@ -35,7 +36,7 @@ export function useFinancialHistory() {
           key,
           year: date.getFullYear(),
           month: date.getMonth(),
-          name: date.getFullYear() === currentYear ? label : `${label} '${String(date.getFullYear()).slice(2)}`,
+          name: `${label} '${String(date.getFullYear()).slice(2)}`,
           income: 0,
           expenses: 0,
         };
@@ -59,7 +60,9 @@ export function useFinancialHistory() {
   }, [expenses, incomes]);
 
   // Recent window (last 6 calendar months, always including the current
-  // month even if it has no data yet) for the small inline chart.
+  // month even if it has no data yet) for the small inline chart. Always
+  // 6 real calendar months so it's unambiguous without a year — unlike
+  // fullHistory's labels, which must disambiguate across years.
   const recentHistory = useMemo<MonthlyFinancialPoint[]>(() => {
     const now = new Date();
     const byKey = new Map(fullHistory.map((p) => [p.key, p]));
@@ -68,16 +71,15 @@ export function useFinancialHistory() {
     for (let i = 5; i >= 0; i--) {
       const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
       const key = `${d.getFullYear()}-${d.getMonth()}`;
-      points.push(
-        byKey.get(key) || {
-          key,
-          year: d.getFullYear(),
-          month: d.getMonth(),
-          name: d.toLocaleDateString("en-US", { month: "short" }),
-          income: 0,
-          expenses: 0,
-        }
-      );
+      const existing = byKey.get(key);
+      points.push({
+        key,
+        year: d.getFullYear(),
+        month: d.getMonth(),
+        name: d.toLocaleDateString("en-US", { month: "short" }),
+        income: existing?.income ?? 0,
+        expenses: existing?.expenses ?? 0,
+      });
     }
 
     return points;

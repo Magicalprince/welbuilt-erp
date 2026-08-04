@@ -1,4 +1,5 @@
 import { useRef, useState, useEffect, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { motion, AnimatePresence, useMotionValue } from "framer-motion";
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ReferenceLine } from "recharts";
 import { X, TrendingUp, TrendingDown, Move } from "lucide-react";
@@ -8,6 +9,21 @@ import { ChartColors } from "@/lib/chartColors";
 import type { MonthlyFinancialPoint } from "@/hooks/useFinancialHistory";
 
 const VISIBLE_MONTHS = 8;
+
+// Recharts' root <svg> (and its draggable wrapper) can pick up a browser
+// default border/outline in some environments. Force it off directly on the
+// surface rather than relying on axisLine/CartesianGrid props, which don't
+// cover this — scoped narrowly so it can't affect the tooltip portal.
+const NO_CHROME_STYLES = (
+  <style>{`
+    .expanded-chart-canvas,
+    .expanded-chart-canvas .recharts-wrapper,
+    .expanded-chart-canvas .recharts-surface {
+      outline: none !important;
+      border: none !important;
+    }
+  `}</style>
+);
 
 interface CustomTooltipProps {
   active?: boolean;
@@ -110,10 +126,11 @@ export default function ExpandedChartOverlay({ isOpen, onClose, data }: Expanded
     { income: 0, expenses: 0 }
   );
 
-  return (
+  return createPortal(
     <AnimatePresence>
       {isOpen && (
         <>
+          {NO_CHROME_STYLES}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -186,14 +203,15 @@ export default function ExpandedChartOverlay({ isOpen, onClose, data }: Expanded
                     dragTransition={{ power: 0.25, timeConstant: 200 }}
                     onDragStart={() => setHasDragHint(false)}
                     style={{ x, width: chartWidth }}
-                    className="h-full py-6 outline-none"
+                    className="expanded-chart-canvas h-full py-6 outline-none"
                     tabIndex={-1}
                   >
                     <AreaChart
                       width={chartWidth}
                       height={Math.max(viewportSize.height - 48, 200)}
                       data={data}
-                      margin={{ top: 10, right: 32, left: 8, bottom: 0 }}
+                      margin={{ top: 10, right: 40, left: 8, bottom: 0 }}
+                      style={{ outline: "none" }}
                     >
                       <defs>
                         <linearGradient id="expandedColorIncome" x1="0" y1="0" x2="0" y2="1">
@@ -233,7 +251,7 @@ export default function ExpandedChartOverlay({ isOpen, onClose, data }: Expanded
                         />
                       )}
                       <Area
-                        type="natural"
+                        type="monotone"
                         dataKey="income"
                         stroke={ChartColors.success}
                         strokeWidth={2.5}
@@ -243,7 +261,7 @@ export default function ExpandedChartOverlay({ isOpen, onClose, data }: Expanded
                         activeDot={{ r: 5, strokeWidth: 2, stroke: "hsl(var(--card))" }}
                       />
                       <Area
-                        type="natural"
+                        type="monotone"
                         dataKey="expenses"
                         stroke={ChartColors.danger}
                         strokeWidth={2.5}
@@ -291,6 +309,7 @@ export default function ExpandedChartOverlay({ isOpen, onClose, data }: Expanded
           </div>
         </>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body
   );
 }
