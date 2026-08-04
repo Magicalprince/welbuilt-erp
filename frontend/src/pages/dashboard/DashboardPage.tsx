@@ -111,7 +111,12 @@ export default function DashboardPage() {
   const { data: expenses } = useExpenses();
   const { data: incomes } = useIncomes();
 
-  // Calculate monthly revenue data for chart (includes both invoices and incomes)
+  // Calculate monthly revenue data for chart.
+  // Revenue comes ONLY from Income records — never from invoice totals —
+  // matching the rule getFinancialSummary()/getTotalRevenue() already
+  // enforce everywhere else (see commit cab91be). Adding paid-invoice
+  // totals here as well would double-count revenue that was also logged
+  // as Income.
   const monthlyRevenueData = useMemo(() => {
     // Use year-month key for reliable matching
     const monthlyData: Record<string, { value: number; date: Date; display: string }> = {};
@@ -158,17 +163,6 @@ export default function DashboardPage() {
       monthlyData[key].value += amount;
     };
 
-    // Add revenue from paid invoices
-    invoices?.forEach(inv => {
-      if (inv.status === 'PAID' && inv.payments && inv.payments.length > 0) {
-        const payment = inv.payments[0];
-        const paymentDate = parseDate(payment.createdAt);
-        if (paymentDate) {
-          addToMonth(paymentDate, inv.total);
-        }
-      }
-    });
-
     // Add revenue from incomes collection
     incomes?.forEach(inc => {
       const incomeDate = parseDate(inc.date);
@@ -176,12 +170,6 @@ export default function DashboardPage() {
         addToMonth(incomeDate, inc.amount);
       }
     });
-
-    // Debug: log what data we have (in development mode)
-    if (import.meta.env.DEV) {
-      console.log('[Dashboard] Raw incomes:', incomes);
-      console.log('[Dashboard] Monthly data:', monthlyData);
-    }
 
     // If we have any data, show it sorted by date
     const entries = Object.entries(monthlyData);
@@ -205,7 +193,7 @@ export default function DashboardPage() {
       });
     }
     return fallbackData;
-  }, [invoices, incomes]);
+  }, [incomes]);
 
   // Expense breakdown for donut chart
   const expenseBreakdown = useMemo(() => {

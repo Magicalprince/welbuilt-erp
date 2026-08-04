@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
@@ -34,9 +34,10 @@ import {
   ChartColors,
 } from "@/components/ui";
 import { formatCurrency } from "@/lib/utils";
-import { useFinancialSummary, useFounderFinances, useInvoices, useClients, useExpenses, useIncomes } from "@/hooks/useFirestore";
+import { useFinancialSummary, useFounderFinances, useInvoices, useClients, useExpenses } from "@/hooks/useFirestore";
+import { useFinancialHistory } from "@/hooks/useFinancialHistory";
+import ExpandedChartOverlay from "@/components/finance/ExpandedChartOverlay";
 import type { InvoiceStatus } from "@/types";
-import { Timestamp } from "firebase/firestore";
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -57,7 +58,8 @@ export default function FinancePage() {
   const { data: invoices, isLoading: loadingInvoices } = useInvoices();
   const { data: clients } = useClients();
   const { data: expenses } = useExpenses();
-  const { data: incomes } = useIncomes();
+  const { recentHistory, fullHistory } = useFinancialHistory();
+  const [isChartExpanded, setIsChartExpanded] = useState(false);
 
   // Create client name map
   const clientMap = useMemo(() => {
@@ -76,51 +78,6 @@ export default function FinancePage() {
       clientName: clientMap[invoice.clientId] || "Unknown Client",
     }));
   }, [invoices, clientMap]);
-
-  // Monthly income vs expenses for chart.
-  // Buckets are keyed by year+month (not just month name) so a prior year's
-  // "Aug" can never bleed into the current year's "Aug" bucket. Income here
-  // comes ONLY from Income records — never from invoice totals — matching
-  // the same revenue rule getFinancialSummary()/the Dashboard already use.
-  const monthlyComparisonData = useMemo(() => {
-    if (!expenses && !incomes) return [];
-
-    const monthlyData: Record<string, { label: string; income: number; expenses: number }> = {};
-    const now = new Date();
-    const bucketKey = (d: Date) => `${d.getFullYear()}-${d.getMonth()}`;
-
-    // Initialize last 6 months
-    for (let i = 5; i >= 0; i--) {
-      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      monthlyData[bucketKey(d)] = {
-        label: d.toLocaleDateString('en-US', { month: 'short' }),
-        income: 0,
-        expenses: 0,
-      };
-    }
-
-    incomes?.forEach(inc => {
-      const date = inc.date instanceof Timestamp ? inc.date.toDate() : new Date(inc.date);
-      const key = bucketKey(date);
-      if (monthlyData[key]) {
-        monthlyData[key].income += inc.amount;
-      }
-    });
-
-    expenses?.forEach(exp => {
-      const date = exp.date instanceof Timestamp ? exp.date.toDate() : new Date(exp.date);
-      const key = bucketKey(date);
-      if (monthlyData[key]) {
-        monthlyData[key].expenses += exp.amount;
-      }
-    });
-
-    return Object.values(monthlyData).map(({ label, income, expenses }) => ({
-      name: label,
-      income,
-      expenses,
-    }));
-  }, [expenses, incomes]);
 
   // Expense breakdown for donut chart
   const expenseBreakdown = useMemo(() => {
@@ -234,8 +191,15 @@ export default function FinancePage() {
                   <span className="text-xs">margin</span>
                 </div>
               </div>
-              {monthlyComparisonData.length > 0 && (
-                <ComparisonAreaChart data={monthlyComparisonData} height={220} />
+              {recentHistory.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setIsChartExpanded(true)}
+                  className="w-full text-left cursor-zoom-in rounded-lg transition-opacity hover:opacity-90"
+                  title="Click to view full history"
+                >
+                  <ComparisonAreaChart data={recentHistory} height={220} />
+                </button>
               )}
               <ChartLegend
                 items={[
@@ -464,6 +428,12 @@ export default function FinancePage() {
           </CardContent>
         </Card>
       </motion.div>
+
+      <ExpandedChartOverlay
+        isOpen={isChartExpanded}
+        onClose={() => setIsChartExpanded(false)}
+        data={fullHistory}
+      />
     </motion.div>
   );
 }
