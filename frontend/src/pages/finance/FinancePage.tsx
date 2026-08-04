@@ -77,58 +77,50 @@ export default function FinancePage() {
     }));
   }, [invoices, clientMap]);
 
-  // Monthly income vs expenses for chart
+  // Monthly income vs expenses for chart.
+  // Buckets are keyed by year+month (not just month name) so a prior year's
+  // "Aug" can never bleed into the current year's "Aug" bucket. Income here
+  // comes ONLY from Income records — never from invoice totals — matching
+  // the same revenue rule getFinancialSummary()/the Dashboard already use.
   const monthlyComparisonData = useMemo(() => {
-    if (!invoices && !expenses && !incomes) return [];
+    if (!expenses && !incomes) return [];
 
-    const monthlyData: Record<string, { income: number; expenses: number }> = {};
+    const monthlyData: Record<string, { label: string; income: number; expenses: number }> = {};
     const now = new Date();
+    const bucketKey = (d: Date) => `${d.getFullYear()}-${d.getMonth()}`;
 
     // Initialize last 6 months
     for (let i = 5; i >= 0; i--) {
       const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      const key = d.toLocaleDateString('en-US', { month: 'short' });
-      monthlyData[key] = { income: 0, expenses: 0 };
+      monthlyData[bucketKey(d)] = {
+        label: d.toLocaleDateString('en-US', { month: 'short' }),
+        income: 0,
+        expenses: 0,
+      };
     }
 
-    // Add invoice revenue
-    invoices?.forEach(inv => {
-      if (inv.status === 'PAID' && inv.payments && inv.payments.length > 0) {
-        const payment = inv.payments[0];
-        const paymentDate = payment.createdAt instanceof Timestamp
-          ? payment.createdAt.toDate()
-          : new Date(payment.createdAt);
-        const key = paymentDate.toLocaleDateString('en-US', { month: 'short' });
-        if (monthlyData[key]) {
-          monthlyData[key].income += inv.total;
-        }
-      }
-    });
-
-    // Add other income
     incomes?.forEach(inc => {
       const date = inc.date instanceof Timestamp ? inc.date.toDate() : new Date(inc.date);
-      const key = date.toLocaleDateString('en-US', { month: 'short' });
+      const key = bucketKey(date);
       if (monthlyData[key]) {
         monthlyData[key].income += inc.amount;
       }
     });
 
-    // Add expenses
     expenses?.forEach(exp => {
       const date = exp.date instanceof Timestamp ? exp.date.toDate() : new Date(exp.date);
-      const key = date.toLocaleDateString('en-US', { month: 'short' });
+      const key = bucketKey(date);
       if (monthlyData[key]) {
         monthlyData[key].expenses += exp.amount;
       }
     });
 
-    return Object.entries(monthlyData).map(([name, data]) => ({
-      name,
-      income: data.income,
-      expenses: data.expenses,
+    return Object.values(monthlyData).map(({ label, income, expenses }) => ({
+      name: label,
+      income,
+      expenses,
     }));
-  }, [invoices, expenses, incomes]);
+  }, [expenses, incomes]);
 
   // Expense breakdown for donut chart
   const expenseBreakdown = useMemo(() => {
