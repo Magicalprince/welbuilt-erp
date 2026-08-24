@@ -393,15 +393,12 @@ export interface Intern {
 }
 
 // Quotation Types
+//
+// Quotations are generated OUTSIDE the ERP (locally, as a doc/PDF) — this is
+// deliberately a document-tracking record, not a generator: upload the
+// already-made file, map it to a client/project, track status. No line
+// items, no GST math, no PDF rendering happens here.
 export type QuotationStatus = "DRAFT" | "SENT" | "ACCEPTED" | "REJECTED" | "EXPIRED";
-
-export interface QuotationLineItem {
-  id: string;
-  description: string;
-  quantity: number;
-  rate: number;
-  amount: number;
-}
 
 export interface Quotation {
   id: string;
@@ -410,24 +407,15 @@ export interface Quotation {
   client?: Client;
   projectId?: string;
   issueDate: Date;
-  validUntil: Date;
-  lineItems: QuotationLineItem[];
-  subtotal: number;
-  tax: number;
-  discount: number;
-  total: number;
+  validUntil?: Date;
+  amount: number;
   status: QuotationStatus;
   notes?: string;
-  terms?: string;
-  brand?: "welbuilt" | "sparks";  // which brand issues this quotation, defaults to "sparks"
-  gstType?: GSTType;
-  cgstPercent?: number;
-  sgstPercent?: number;
-  igstPercent?: number;
-  cgstAmount?: number;
-  sgstAmount?: number;
-  igstAmount?: number;
-  convertedToInvoiceId?: string;
+  fileUrl: string;
+  fileKey: string;
+  fileName: string;
+  fileSize: number;
+  mimeType: string;
   createdAt: Date;
   updatedAt: Date;
 }

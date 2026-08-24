@@ -1,13 +1,11 @@
-import { useState, useMemo } from "react";
-import { useNavigate } from "react-router-dom";
+import { useState, useMemo, useRef } from "react";
 import { motion } from "framer-motion";
 import {
-  Plus,
+  Upload,
   Search,
   Trash2,
   FileText,
   Loader2,
-  ArrowRight,
   CheckCircle2,
   XCircle,
   Clock,
@@ -15,6 +13,7 @@ import {
   X,
   Filter,
   Download,
+  Paperclip,
 } from "lucide-react";
 import {
   Button,
@@ -35,11 +34,11 @@ import {
   updateQuotation,
   deleteQuotation,
 } from "@/services/quotationService";
-import { useClients, useProjects, useCreateInvoice, useCreateClient, useCreateProject } from "@/hooks/useFirestore";
-import { generateAndDownloadQuotationPdf } from "@/services/quotationPdfService";
+import { uploadFileToR2, deleteFileFromR2, getSignedDownloadUrl, validateFile, formatFileSize } from "@/services/serverStorageService";
+import { useClients, useProjects, useCreateClient, useCreateProject } from "@/hooks/useFirestore";
 import { formatCurrency, formatDate, cn } from "@/lib/utils";
 import toast from "react-hot-toast";
-import type { Quotation, QuotationStatus, GSTType, QuotationLineItem, Client, Project } from "@/types";
+import type { Quotation, QuotationStatus } from "@/types";
 
 const STATUS_OPTIONS = [
   { value: "ALL", label: "All Status" },
@@ -48,20 +47,6 @@ const STATUS_OPTIONS = [
   { value: "ACCEPTED", label: "Accepted" },
   { value: "REJECTED", label: "Rejected" },
   { value: "EXPIRED", label: "Expired" },
-];
-
-const GST_TYPE_OPTIONS = [
-  { value: "NONE", label: "No GST" },
-  { value: "CGST_SGST", label: "CGST + SGST (Intra-state)" },
-  { value: "IGST", label: "IGST (Inter-state)" },
-];
-
-const GST_RATE_OPTIONS = [
-  { value: "0", label: "0%" },
-  { value: "5", label: "5%" },
-  { value: "12", label: "12%" },
-  { value: "18", label: "18% (Standard)" },
-  { value: "28", label: "28%" },
 ];
 
 function statusConfig(status: QuotationStatus): {
@@ -82,15 +67,15 @@ function statusConfig(status: QuotationStatus): {
 const quotationQueryKey = ["quotations"] as const;
 
 export default function QuotationsPage() {
-  const navigate = useNavigate();
   const queryClient = useQueryClient();
 
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [showFilters, setShowFilters] = useState(false);
-  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showUploadModal, setShowUploadModal] = useState(false);
   const [viewQuotation, setViewQuotation] = useState<Quotation | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<Quotation | null>(null);
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
 
   const { data: quotations, isLoading } = useQuery({
     queryKey: quotationQueryKey,
@@ -98,10 +83,16 @@ export default function QuotationsPage() {
   });
   const { data: clients } = useClients();
   const { data: projects } = useProjects();
-  const createInvoiceMutation = useCreateInvoice();
 
   const deleteMutation = useMutation({
-    mutationFn: deleteQuotation,
+    mutationFn: async (quotation: Quotation) => {
+      try {
+        await deleteFileFromR2(quotation.fileKey);
+      } catch (err) {
+        console.error("Failed to delete stored file:", err);
+      }
+      await deleteQuotation(quotation.id);
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: quotationQueryKey });
       toast.success("Quotation deleted");
@@ -117,40 +108,24 @@ export default function QuotationsPage() {
     onError: () => toast.error("Failed to update status"),
   });
 
-  const convertMutation = useMutation({
-    mutationFn: async (quotation: Quotation) => {
-      const invoiceData = {
-        clientId: quotation.clientId,
-        projectId: quotation.projectId,
-        issueDate: new Date(),
-        dueDate: new Date(Date.now() + 30 * 86400000),
-        lineItems: quotation.lineItems,
-        subtotal: quotation.subtotal,
-        tax: quotation.tax,
-        discount: quotation.discount,
-        total: quotation.total,
-        status: "PENDING" as const,
-        notes: quotation.notes,
-        gstType: quotation.gstType,
-        cgstPercent: quotation.cgstPercent,
-        sgstPercent: quotation.sgstPercent,
-        igstPercent: quotation.igstPercent,
-        cgstAmount: quotation.cgstAmount,
-        sgstAmount: quotation.sgstAmount,
-        igstAmount: quotation.igstAmount,
-      };
-      const invoiceId = await createInvoiceMutation.mutateAsync({ data: invoiceData, paymentSchedule: [] });
-      await updateQuotation(quotation.id, { status: "ACCEPTED", convertedToInvoiceId: invoiceId });
-      return invoiceId;
-    },
-    onSuccess: (invoiceId) => {
-      queryClient.invalidateQueries({ queryKey: quotationQueryKey });
-      toast.success("Quotation converted to invoice!");
-      setViewQuotation(null);
-      navigate(`/finance/invoices/${invoiceId}`);
-    },
-    onError: () => toast.error("Failed to convert quotation to invoice"),
-  });
+  const handleDownload = async (q: Quotation) => {
+    setDownloadingId(q.id);
+    try {
+      const signedUrl = await getSignedDownloadUrl(q.fileKey);
+      const link = document.createElement("a");
+      link.href = signedUrl;
+      link.target = "_blank";
+      link.download = q.fileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (err) {
+      console.error("Download failed:", err);
+      toast.error("Download failed");
+    } finally {
+      setDownloadingId(null);
+    }
+  };
 
   const clientMap = useMemo(() => {
     const map: Record<string, string> = {};
@@ -158,12 +133,19 @@ export default function QuotationsPage() {
     return map;
   }, [clients]);
 
+  const projectMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    projects?.forEach((p) => { map[p.id] = p.title; });
+    return map;
+  }, [projects]);
+
   const filtered = useMemo(() => {
     if (!quotations) return [];
     return quotations.filter((q) => {
       const clientName = clientMap[q.clientId] || "";
       const matchesSearch =
         q.quotationNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        q.fileName.toLowerCase().includes(searchQuery.toLowerCase()) ||
         clientName.toLowerCase().includes(searchQuery.toLowerCase());
       const matchesStatus = statusFilter === "ALL" || q.status === statusFilter;
       return matchesSearch && matchesStatus;
@@ -176,7 +158,7 @@ export default function QuotationsPage() {
       total: quotations.length,
       accepted: quotations.filter((q) => q.status === "ACCEPTED").length,
       pending: quotations.filter((q) => q.status === "SENT" || q.status === "DRAFT").length,
-      totalValue: quotations.filter((q) => q.status === "ACCEPTED").reduce((s, q) => s + q.total, 0),
+      totalValue: quotations.filter((q) => q.status === "ACCEPTED").reduce((s, q) => s + q.amount, 0),
     };
   }, [quotations]);
 
@@ -186,11 +168,11 @@ export default function QuotationsPage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold">Quotations</h1>
-          <p className="text-muted-foreground">Create and manage client quotations</p>
+          <p className="text-muted-foreground">Track quotations sent to clients and map them to projects</p>
         </div>
-        <Button onClick={() => setShowCreateModal(true)}>
-          <Plus className="h-4 w-4 mr-2" />
-          New Quotation
+        <Button onClick={() => setShowUploadModal(true)}>
+          <Upload className="h-4 w-4 mr-2" />
+          Add Quotation
         </Button>
       </div>
 
@@ -216,7 +198,7 @@ export default function QuotationsPage() {
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Search by number or client..."
+            placeholder="Search by number, file name, or client..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="pl-10"
@@ -262,11 +244,11 @@ export default function QuotationsPage() {
           <p className="text-muted-foreground mb-4">
             {quotations && quotations.length > 0
               ? "Try adjusting your search or filter"
-              : "Create your first quotation to send to clients"}
+              : "Upload a quotation you've already sent to a client to start tracking it here"}
           </p>
-          <Button onClick={() => setShowCreateModal(true)}>
-            <Plus className="h-4 w-4 mr-2" />
-            New Quotation
+          <Button onClick={() => setShowUploadModal(true)}>
+            <Upload className="h-4 w-4 mr-2" />
+            Add Quotation
           </Button>
         </div>
       ) : (
@@ -274,7 +256,8 @@ export default function QuotationsPage() {
           {filtered.map((q) => {
             const cfg = statusConfig(q.status);
             const clientName = clientMap[q.clientId] || "Unknown Client";
-            const isExpired = q.status === "SENT" && new Date() > q.validUntil;
+            const projectName = q.projectId ? projectMap[q.projectId] : null;
+            const isExpired = q.status === "SENT" && q.validUntil && new Date() > q.validUntil;
             return (
               <motion.div
                 key={q.id}
@@ -286,7 +269,7 @@ export default function QuotationsPage() {
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                       <div className="flex items-start gap-3">
                         <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-                          <FileText className="h-5 w-5 text-primary" />
+                          <Paperclip className="h-5 w-5 text-primary" />
                         </div>
                         <div>
                           <div className="flex items-center gap-2 flex-wrap">
@@ -295,19 +278,19 @@ export default function QuotationsPage() {
                               {cfg.icon}
                               {cfg.label}
                             </Badge>
-                            {isExpired && q.status === "SENT" && (
+                            {isExpired && (
                               <Badge variant="destructive" className="text-xs">Expired</Badge>
                             )}
                           </div>
-                          <p className="text-sm text-muted-foreground">{clientName}</p>
-                          <p className="text-xs text-muted-foreground">
-                            Valid until: {formatDate(q.validUntil)}
+                          <p className="text-sm text-muted-foreground">
+                            {clientName}{projectName ? ` • ${projectName}` : ""}
                           </p>
+                          <p className="text-xs text-muted-foreground truncate max-w-xs">{q.fileName}</p>
                         </div>
                       </div>
                       <div className="flex items-center gap-3">
                         <div className="text-right">
-                          <p className="font-bold text-lg">{formatCurrency(q.total)}</p>
+                          <p className="font-bold text-lg">{formatCurrency(q.amount)}</p>
                           <p className="text-xs text-muted-foreground">{formatDate(q.issueDate)}</p>
                         </div>
                         <div className="flex gap-1">
@@ -318,19 +301,21 @@ export default function QuotationsPage() {
                               onClick={() => updateStatusMutation.mutate({ id: q.id, status: "SENT" })}
                             >
                               <Send className="h-3 w-3 mr-1" />
-                              Send
+                              Mark Sent
                             </Button>
                           )}
-                          {(q.status === "SENT" || q.status === "ACCEPTED") && !q.convertedToInvoiceId && (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => setViewQuotation(q)}
-                            >
-                              <ArrowRight className="h-3 w-3 mr-1" />
-                              Convert
-                            </Button>
-                          )}
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleDownload(q)}
+                            disabled={downloadingId === q.id}
+                          >
+                            {downloadingId === q.id ? (
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                            ) : (
+                              <Download className="h-3 w-3" />
+                            )}
+                          </Button>
                           <Button
                             variant="ghost"
                             size="sm"
@@ -357,11 +342,11 @@ export default function QuotationsPage() {
         </div>
       )}
 
-      {/* Create Quotation Modal */}
-      {showCreateModal && (
-        <CreateQuotationModal
-          isOpen={showCreateModal}
-          onClose={() => setShowCreateModal(false)}
+      {/* Upload / Add Quotation Modal */}
+      {showUploadModal && (
+        <UploadQuotationModal
+          isOpen={showUploadModal}
+          onClose={() => setShowUploadModal(false)}
           clients={clients || []}
           onSuccess={() => queryClient.invalidateQueries({ queryKey: quotationQueryKey })}
         />
@@ -372,11 +357,10 @@ export default function QuotationsPage() {
         <QuotationDetailModal
           quotation={viewQuotation}
           clientName={clientMap[viewQuotation.clientId] || "Unknown"}
-          client={clients?.find((c) => c.id === viewQuotation.clientId) ?? null}
-          project={projects?.find((p) => p.id === viewQuotation.projectId) ?? null}
+          projectName={viewQuotation.projectId ? projectMap[viewQuotation.projectId] : null}
           onClose={() => setViewQuotation(null)}
-          onConvert={() => convertMutation.mutate(viewQuotation)}
-          converting={convertMutation.isPending}
+          onDownload={() => handleDownload(viewQuotation)}
+          downloading={downloadingId === viewQuotation.id}
           onStatusChange={(status) => {
             updateStatusMutation.mutate({ id: viewQuotation.id, status });
             setViewQuotation((q) => q ? { ...q, status } : null);
@@ -387,13 +371,13 @@ export default function QuotationsPage() {
       {/* Delete Confirm */}
       <Modal isOpen={!!deleteConfirm} onClose={() => setDeleteConfirm(null)} title="Delete Quotation">
         <p className="text-sm text-muted-foreground mb-4">
-          Are you sure you want to delete quotation <strong>{deleteConfirm?.quotationNumber}</strong>? This cannot be undone.
+          Are you sure you want to delete quotation <strong>{deleteConfirm?.quotationNumber}</strong> and its attached file? This cannot be undone.
         </p>
         <div className="flex justify-end gap-2">
           <Button variant="outline" onClick={() => setDeleteConfirm(null)}>Cancel</Button>
           <Button
             variant="destructive"
-            onClick={() => deleteConfirm && deleteMutation.mutate(deleteConfirm.id)}
+            onClick={() => deleteConfirm && deleteMutation.mutate(deleteConfirm)}
             disabled={deleteMutation.isPending}
           >
             {deleteMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Delete"}
@@ -405,9 +389,9 @@ export default function QuotationsPage() {
 }
 
 // ─────────────────────────────────────────────
-// Create Quotation Modal
+// Upload Quotation Modal
 // ─────────────────────────────────────────────
-function CreateQuotationModal({
+function UploadQuotationModal({
   isOpen,
   onClose,
   clients,
@@ -421,6 +405,7 @@ function CreateQuotationModal({
   const { data: allProjects } = useProjects();
   const createClientMutation = useCreateClient();
   const createProjectMutation = useCreateProject();
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [clientId, setClientId] = useState("");
   const [projectId, setProjectId] = useState("");
@@ -442,14 +427,9 @@ function CreateQuotationModal({
     d.setDate(d.getDate() + 15);
     return d.toISOString().split("T")[0];
   });
-  const [gstType, setGstType] = useState<GSTType>("CGST_SGST");
-  const [gstRate, setGstRate] = useState(18);
-  const [discount, setDiscount] = useState(0);
+  const [amount, setAmount] = useState(0);
   const [notes, setNotes] = useState("");
-  const [terms, setTerms] = useState("This quotation is valid for 15 days from the date of issue.");
-  const [lineItems, setLineItems] = useState<QuotationLineItem[]>([
-    { id: crypto.randomUUID(), description: "", quantity: 1, rate: 0, amount: 0 },
-  ]);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   const clientProjects = useMemo(
@@ -457,25 +437,15 @@ function CreateQuotationModal({
     [allProjects, clientId]
   );
 
-  const subtotal = lineItems.reduce((s, i) => s + i.amount, 0);
-  const cgstPercent = gstType === "CGST_SGST" ? gstRate / 2 : 0;
-  const sgstPercent = gstType === "CGST_SGST" ? gstRate / 2 : 0;
-  const igstPercent = gstType === "IGST" ? gstRate : 0;
-  const cgstAmount = gstType === "CGST_SGST" ? (subtotal * cgstPercent) / 100 : 0;
-  const sgstAmount = gstType === "CGST_SGST" ? (subtotal * sgstPercent) / 100 : 0;
-  const igstAmount = gstType === "IGST" ? (subtotal * igstPercent) / 100 : 0;
-  const taxAmount = cgstAmount + sgstAmount + igstAmount;
-  const total = subtotal + taxAmount - discount;
-
-  const updateItem = (id: string, field: keyof QuotationLineItem, value: string | number) => {
-    setLineItems((items) =>
-      items.map((item) => {
-        if (item.id !== id) return item;
-        const updated = { ...item, [field]: value };
-        if (field === "quantity" || field === "rate") updated.amount = updated.quantity * updated.rate;
-        return updated;
-      })
-    );
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const validation = validateFile(file);
+    if (!validation.valid) {
+      toast.error(validation.error || "Invalid file");
+      return;
+    }
+    setSelectedFile(file);
   };
 
   const handleCreateClient = async () => {
@@ -532,66 +502,108 @@ function CreateQuotationModal({
   };
 
   const handleSubmit = async () => {
-    if (!clientId || !lineItems.every((i) => i.description && i.amount > 0)) {
-      toast.error("Please fill in client and all line items");
+    if (!clientId) {
+      toast.error("Select or add a client");
+      return;
+    }
+    if (!selectedFile) {
+      toast.error("Attach the quotation file (PDF or DOC)");
+      return;
+    }
+    if (amount <= 0) {
+      toast.error("Enter the quotation amount");
       return;
     }
     setSubmitting(true);
     try {
+      const uploaded = await uploadFileToR2(selectedFile, "quotations");
       await createQuotation({
         clientId,
         projectId: projectId || undefined,
         issueDate: new Date(issueDate),
-        validUntil: new Date(validUntil),
-        lineItems,
-        subtotal,
-        tax: taxAmount,
-        discount,
-        total,
+        validUntil: validUntil ? new Date(validUntil) : undefined,
+        amount,
         status: "DRAFT",
         notes: notes || undefined,
-        terms: terms || undefined,
-        gstType,
-        ...(gstType === "CGST_SGST" && { cgstPercent, sgstPercent, cgstAmount, sgstAmount }),
-        ...(gstType === "IGST" && { igstPercent, igstAmount }),
+        fileUrl: uploaded.fileUrl,
+        fileKey: uploaded.fileKey,
+        fileName: selectedFile.name,
+        fileSize: uploaded.fileSize,
+        mimeType: uploaded.mimeType,
       });
-      toast.success("Quotation created!");
+      toast.success("Quotation added!");
       onSuccess();
       onClose();
     } catch (err) {
       console.error(err);
-      toast.error("Failed to create quotation");
+      toast.error("Failed to add quotation");
     } finally {
       setSubmitting(false);
     }
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="New Quotation" className="max-w-3xl">
+    <Modal isOpen={isOpen} onClose={onClose} title="Add Quotation" className="max-w-2xl">
       <div className="space-y-4 max-h-[75vh] overflow-y-auto pr-1">
+        <p className="text-sm text-muted-foreground">
+          Attach a quotation you've already created (PDF or Word doc) and map it to a client and project.
+        </p>
+
+        {/* File attach */}
+        <div>
+          <Label>Quotation File *</Label>
+          <input
+            ref={fileInputRef}
+            type="file"
+            className="hidden"
+            accept=".pdf,.doc,.docx"
+            onChange={handleFileSelect}
+          />
+          {selectedFile ? (
+            <div className="mt-1 flex items-center justify-between p-3 border rounded-lg bg-muted/30">
+              <div className="flex items-center gap-2 min-w-0">
+                <Paperclip className="h-4 w-4 text-muted-foreground shrink-0" />
+                <span className="text-sm truncate">{selectedFile.name}</span>
+                <span className="text-xs text-muted-foreground shrink-0">{formatFileSize(selectedFile.size)}</span>
+              </div>
+              <Button type="button" variant="ghost" size="sm" onClick={() => setSelectedFile(null)}>
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+          ) : (
+            <Button
+              type="button"
+              variant="outline"
+              className="mt-1 w-full"
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <Upload className="h-4 w-4 mr-2" />
+              Choose File
+            </Button>
+          )}
+        </div>
+
         {/* Client & Project */}
         <div className="grid grid-cols-2 gap-4">
           <div>
             <Label>Client *</Label>
             {!showNewClientForm ? (
-              <>
-                <Select
-                  value={clientId}
-                  onChange={(e) => {
-                    if (e.target.value === "__new__") {
-                      setShowNewClientForm(true);
-                      return;
-                    }
-                    setClientId(e.target.value);
-                    setProjectId("");
-                  }}
-                  options={[
-                    ...clients.map((c) => ({ value: c.id, label: c.companyName })),
-                    { value: "__new__", label: "+ Add new client..." },
-                  ]}
-                  placeholder="Select client"
-                />
-              </>
+              <Select
+                value={clientId}
+                onChange={(e) => {
+                  if (e.target.value === "__new__") {
+                    setShowNewClientForm(true);
+                    return;
+                  }
+                  setClientId(e.target.value);
+                  setProjectId("");
+                }}
+                options={[
+                  ...clients.map((c) => ({ value: c.id, label: c.companyName })),
+                  { value: "__new__", label: "+ Add new client..." },
+                ]}
+                placeholder="Select client"
+              />
             ) : (
               <div className="mt-1 p-3 border rounded-lg space-y-2 bg-muted/30">
                 <Input
@@ -683,139 +695,27 @@ function CreateQuotationModal({
           </div>
         </div>
 
-        {/* Dates */}
-        <div className="grid grid-cols-2 gap-4">
+        {/* Dates & Amount */}
+        <div className="grid grid-cols-3 gap-4">
           <div>
             <Label>Issue Date</Label>
             <Input type="date" value={issueDate} onChange={(e) => setIssueDate(e.target.value)} />
           </div>
           <div>
-            <Label>Valid Until</Label>
+            <Label>Valid Until (Optional)</Label>
             <Input type="date" value={validUntil} onChange={(e) => setValidUntil(e.target.value)} />
           </div>
-        </div>
-
-        {/* Line Items */}
-        <div>
-          <div className="flex items-center justify-between mb-2">
-            <Label>Line Items</Label>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() =>
-                setLineItems((items) => [
-                  ...items,
-                  { id: crypto.randomUUID(), description: "", quantity: 1, rate: 0, amount: 0 },
-                ])
-              }
-            >
-              <Plus className="h-3 w-3 mr-1" />
-              Add
-            </Button>
-          </div>
-          <div className="space-y-2">
-            {lineItems.map((item) => (
-              <div key={item.id} className="grid grid-cols-12 gap-2 items-center">
-                <div className="col-span-5">
-                  <Input
-                    placeholder="Description"
-                    value={item.description}
-                    onChange={(e) => updateItem(item.id, "description", e.target.value)}
-                  />
-                </div>
-                <div className="col-span-2">
-                  <Input
-                    type="number"
-                    min="1"
-                    value={item.quantity}
-                    onChange={(e) => updateItem(item.id, "quantity", Number(e.target.value))}
-                  />
-                </div>
-                <div className="col-span-2">
-                  <Input
-                    type="number"
-                    min="0"
-                    value={item.rate}
-                    onChange={(e) => updateItem(item.id, "rate", Number(e.target.value))}
-                  />
-                </div>
-                <div className="col-span-2 text-right text-sm font-medium">{formatCurrency(item.amount)}</div>
-                <div className="col-span-1">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8"
-                    disabled={lineItems.length === 1}
-                    onClick={() => setLineItems((items) => items.filter((i) => i.id !== item.id))}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* GST & Totals */}
-        <div className="border-t pt-3 space-y-2">
-          <div className="flex justify-between text-sm">
-            <span className="text-muted-foreground">Subtotal</span>
-            <span className="font-medium">{formatCurrency(subtotal)}</span>
-          </div>
-          <div className="flex items-center gap-3">
-            <span className="text-sm text-muted-foreground min-w-[70px]">GST Type</span>
-            <Select
-              value={gstType}
-              onChange={(e) => setGstType(e.target.value as GSTType)}
-              options={GST_TYPE_OPTIONS}
-              className="flex-1"
-            />
-            {gstType !== "NONE" && (
-              <Select
-                value={gstRate.toString()}
-                onChange={(e) => setGstRate(Number(e.target.value))}
-                options={GST_RATE_OPTIONS}
-                className="w-32"
-              />
-            )}
-          </div>
-          {gstType === "CGST_SGST" && (
-            <>
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">CGST ({cgstPercent}%)</span>
-                <span>{formatCurrency(cgstAmount)}</span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">SGST ({sgstPercent}%)</span>
-                <span>{formatCurrency(sgstAmount)}</span>
-              </div>
-            </>
-          )}
-          {gstType === "IGST" && (
-            <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">IGST ({igstPercent}%)</span>
-              <span>{formatCurrency(igstAmount)}</span>
-            </div>
-          )}
-          <div className="flex items-center gap-3">
-            <span className="text-sm text-muted-foreground min-w-[70px]">Discount (₹)</span>
+          <div>
+            <Label>Amount (₹) *</Label>
             <Input
               type="number"
               min="0"
-              value={discount}
-              onChange={(e) => setDiscount(Number(e.target.value))}
-              className="w-32 h-8"
+              value={amount}
+              onChange={(e) => setAmount(Number(e.target.value))}
             />
-          </div>
-          <div className="flex justify-between font-bold border-t pt-2">
-            <span>Total</span>
-            <span>{formatCurrency(total)}</span>
           </div>
         </div>
 
-        {/* Notes & Terms */}
         <div>
           <Label>Notes</Label>
           <Textarea
@@ -825,21 +725,12 @@ function CreateQuotationModal({
             rows={2}
           />
         </div>
-        <div>
-          <Label>Terms & Conditions</Label>
-          <Textarea
-            value={terms}
-            onChange={(e) => setTerms(e.target.value)}
-            placeholder="Quotation terms..."
-            rows={2}
-          />
-        </div>
       </div>
 
       <div className="flex justify-end gap-2 pt-4 border-t mt-4">
         <Button variant="outline" onClick={onClose}>Cancel</Button>
         <Button onClick={handleSubmit} disabled={submitting}>
-          {submitting ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Creating...</> : "Create Quotation"}
+          {submitting ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Uploading...</> : "Add Quotation"}
         </Button>
       </div>
     </Modal>
@@ -852,47 +743,33 @@ function CreateQuotationModal({
 function QuotationDetailModal({
   quotation,
   clientName,
-  client,
-  project,
+  projectName,
   onClose,
-  onConvert,
-  converting,
+  onDownload,
+  downloading,
   onStatusChange,
 }: {
   quotation: Quotation;
   clientName: string;
-  client: Client | null;
-  project: Project | null;
+  projectName?: string | null;
   onClose: () => void;
-  onConvert: () => void;
-  converting: boolean;
+  onDownload: () => void;
+  downloading: boolean;
   onStatusChange: (s: QuotationStatus) => void;
 }) {
   const cfg = statusConfig(quotation.status);
-  const [isDownloading, setIsDownloading] = useState(false);
-
-  const handleDownloadPdf = async () => {
-    if (!client) return;
-    setIsDownloading(true);
-    try {
-      await generateAndDownloadQuotationPdf(quotation, client, project);
-    } catch {
-      toast.error("Failed to generate quotation PDF");
-    } finally {
-      setIsDownloading(false);
-    }
-  };
 
   return (
-    <Modal isOpen onClose={onClose} title={`Quotation — ${quotation.quotationNumber}`} className="max-w-2xl">
-      <div className="space-y-4 max-h-[75vh] overflow-y-auto pr-1">
-        {/* Header Info */}
+    <Modal isOpen onClose={onClose} title={`Quotation — ${quotation.quotationNumber}`} className="max-w-lg">
+      <div className="space-y-4">
         <div className="flex items-center justify-between">
           <Badge variant={cfg.variant} className="flex items-center gap-1">
             {cfg.icon}
             {cfg.label}
           </Badge>
-          <span className="text-sm text-muted-foreground">Valid until: {formatDate(quotation.validUntil)}</span>
+          {quotation.validUntil && (
+            <span className="text-sm text-muted-foreground">Valid until: {formatDate(quotation.validUntil)}</span>
+          )}
         </div>
 
         <div className="grid grid-cols-2 gap-4 text-sm">
@@ -901,83 +778,31 @@ function QuotationDetailModal({
             <p className="font-medium">{clientName}</p>
           </div>
           <div>
+            <p className="text-muted-foreground">Project</p>
+            <p className="font-medium">{projectName || "—"}</p>
+          </div>
+          <div>
             <p className="text-muted-foreground">Issue Date</p>
             <p className="font-medium">{formatDate(quotation.issueDate)}</p>
           </div>
+          <div>
+            <p className="text-muted-foreground">Amount</p>
+            <p className="font-medium">{formatCurrency(quotation.amount)}</p>
+          </div>
         </div>
 
-        {/* Line Items */}
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b">
-              <th className="text-left py-2 font-medium">Description</th>
-              <th className="text-right py-2 font-medium">Qty</th>
-              <th className="text-right py-2 font-medium">Rate</th>
-              <th className="text-right py-2 font-medium">Amount</th>
-            </tr>
-          </thead>
-          <tbody>
-            {quotation.lineItems.map((item) => (
-              <tr key={item.id} className="border-b">
-                <td className="py-2">{item.description}</td>
-                <td className="py-2 text-right">{item.quantity}</td>
-                <td className="py-2 text-right">{formatCurrency(item.rate)}</td>
-                <td className="py-2 text-right">{formatCurrency(item.amount)}</td>
-              </tr>
-            ))}
-          </tbody>
-          <tfoot>
-            <tr>
-              <td colSpan={3} className="py-2 text-right text-muted-foreground">Subtotal</td>
-              <td className="py-2 text-right">{formatCurrency(quotation.subtotal)}</td>
-            </tr>
-            {quotation.gstType === "CGST_SGST" && (
-              <>
-                <tr>
-                  <td colSpan={3} className="py-1 text-right text-xs text-muted-foreground">CGST ({quotation.cgstPercent}%)</td>
-                  <td className="py-1 text-right text-xs">{formatCurrency(quotation.cgstAmount || 0)}</td>
-                </tr>
-                <tr>
-                  <td colSpan={3} className="py-1 text-right text-xs text-muted-foreground">SGST ({quotation.sgstPercent}%)</td>
-                  <td className="py-1 text-right text-xs">{formatCurrency(quotation.sgstAmount || 0)}</td>
-                </tr>
-              </>
-            )}
-            {quotation.gstType === "IGST" && (
-              <tr>
-                <td colSpan={3} className="py-1 text-right text-xs text-muted-foreground">IGST ({quotation.igstPercent}%)</td>
-                <td className="py-1 text-right text-xs">{formatCurrency(quotation.igstAmount || 0)}</td>
-              </tr>
-            )}
-            {quotation.discount > 0 && (
-              <tr>
-                <td colSpan={3} className="py-2 text-right text-muted-foreground">Discount</td>
-                <td className="py-2 text-right text-green-600">-{formatCurrency(quotation.discount)}</td>
-              </tr>
-            )}
-            <tr className="border-t font-bold text-base">
-              <td colSpan={3} className="py-2 text-right">Total</td>
-              <td className="py-2 text-right">{formatCurrency(quotation.total)}</td>
-            </tr>
-          </tfoot>
-        </table>
+        <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg text-sm">
+          <div className="flex items-center gap-2 min-w-0">
+            <Paperclip className="h-4 w-4 text-muted-foreground shrink-0" />
+            <span className="truncate">{quotation.fileName}</span>
+          </div>
+          <span className="text-xs text-muted-foreground shrink-0 ml-2">{formatFileSize(quotation.fileSize)}</span>
+        </div>
 
         {quotation.notes && (
           <div className="p-3 bg-muted/50 rounded-lg text-sm">
             <p className="font-medium mb-1">Notes</p>
             <p className="text-muted-foreground">{quotation.notes}</p>
-          </div>
-        )}
-        {quotation.terms && (
-          <div className="p-3 bg-muted/50 rounded-lg text-sm">
-            <p className="font-medium mb-1">Terms & Conditions</p>
-            <p className="text-muted-foreground">{quotation.terms}</p>
-          </div>
-        )}
-
-        {quotation.convertedToInvoiceId && (
-          <div className="p-3 bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800 rounded-lg text-sm text-green-700 dark:text-green-400">
-            This quotation has been converted to an invoice.
           </div>
         )}
       </div>
@@ -992,6 +817,10 @@ function QuotationDetailModal({
           )}
           {quotation.status === "SENT" && (
             <>
+              <Button variant="outline" size="sm" onClick={() => onStatusChange("ACCEPTED")}>
+                <CheckCircle2 className="h-3 w-3 mr-1" />
+                Accepted
+              </Button>
               <Button variant="outline" size="sm" onClick={() => onStatusChange("REJECTED")}>
                 <XCircle className="h-3 w-3 mr-1" />
                 Rejected
@@ -1001,22 +830,13 @@ function QuotationDetailModal({
         </div>
         <div className="flex gap-2">
           <Button variant="outline" onClick={onClose}>Close</Button>
-          <Button variant="outline" onClick={handleDownloadPdf} disabled={isDownloading || !client}>
-            {isDownloading ? (
-              <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Generating...</>
+          <Button onClick={onDownload} disabled={downloading}>
+            {downloading ? (
+              <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Downloading...</>
             ) : (
-              <><Download className="h-4 w-4 mr-2" />Download PDF</>
+              <><Download className="h-4 w-4 mr-2" />Download</>
             )}
           </Button>
-          {!quotation.convertedToInvoiceId && (quotation.status === "SENT" || quotation.status === "ACCEPTED") && (
-            <Button onClick={onConvert} disabled={converting}>
-              {converting ? (
-                <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Converting...</>
-              ) : (
-                <><ArrowRight className="h-4 w-4 mr-2" />Convert to Invoice</>
-              )}
-            </Button>
-          )}
         </div>
       </div>
     </Modal>

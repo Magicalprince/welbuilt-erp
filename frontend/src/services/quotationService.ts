@@ -9,7 +9,7 @@ import {
   orderBy,
   where,
 } from "./firestore";
-import type { Quotation, QuotationStatus, QuotationLineItem } from "@/types";
+import type { Quotation, QuotationStatus } from "@/types";
 
 export interface FirestoreQuotation {
   id: string;
@@ -17,23 +17,15 @@ export interface FirestoreQuotation {
   clientId: string;
   projectId?: string;
   issueDate: Timestamp;
-  validUntil: Timestamp;
-  lineItems: QuotationLineItem[];
-  subtotal: number;
-  tax: number;
-  discount: number;
-  total: number;
+  validUntil?: Timestamp;
+  amount: number;
   status: QuotationStatus;
   notes?: string;
-  terms?: string;
-  gstType?: string;
-  cgstPercent?: number;
-  sgstPercent?: number;
-  igstPercent?: number;
-  cgstAmount?: number;
-  sgstAmount?: number;
-  igstAmount?: number;
-  convertedToInvoiceId?: string;
+  fileUrl: string;
+  fileKey: string;
+  fileName: string;
+  fileSize: number;
+  mimeType: string;
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }
@@ -42,10 +34,9 @@ function toQuotation(doc: FirestoreQuotation): Quotation {
   return {
     ...doc,
     issueDate: doc.issueDate.toDate(),
-    validUntil: doc.validUntil.toDate(),
+    validUntil: doc.validUntil?.toDate(),
     createdAt: doc.createdAt.toDate(),
     updatedAt: doc.updatedAt.toDate(),
-    gstType: doc.gstType as Quotation["gstType"],
   };
 }
 
@@ -99,7 +90,7 @@ export async function createQuotation(
     ...data,
     quotationNumber,
     issueDate: Timestamp.fromDate(data.issueDate),
-    validUntil: Timestamp.fromDate(data.validUntil),
+    validUntil: data.validUntil ? Timestamp.fromDate(data.validUntil) : undefined,
   });
 }
 
@@ -115,11 +106,4 @@ export async function updateQuotation(
 
 export async function deleteQuotation(quotationId: string): Promise<void> {
   await deleteDocument(COLLECTIONS.QUOTATIONS, quotationId);
-}
-
-export async function convertQuotationToInvoice(quotationId: string, invoiceId: string): Promise<void> {
-  await updateDocument(COLLECTIONS.QUOTATIONS, quotationId, {
-    status: "ACCEPTED" as QuotationStatus,
-    convertedToInvoiceId: invoiceId,
-  });
 }
