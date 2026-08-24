@@ -9,3 +9,4 @@ frontend/dist
 frontend/.env
 .playwright-mcp
 *.log
+server/data

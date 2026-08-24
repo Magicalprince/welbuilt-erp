@@ -10,3 +10,7 @@ node_modules
 
 # OS/editor
 .DS_Store
+
+# Local server-side document storage — in production this path is the
+# Dokploy-managed volume mount, never committed content.
+server/data/

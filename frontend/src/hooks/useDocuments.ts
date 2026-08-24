@@ -2,7 +2,43 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "./useFirestore";
 import type { DocumentType } from "@/types";
 
-// Upload document with file to R2
+// New uploads go to server-side storage (Dokploy volume) instead of R2 —
+// see docs/plans/2026-08-24-billing-and-storage-design.md. Existing R2 URLs
+// are still recognized so delete/replace on old documents keeps working;
+// r2Service.ts is untouched. deleteExistingFile below picks the right
+// backend per-URL rather than assuming one.
+async function deleteExistingFile(fileUrl: string): Promise<void> {
+  const r2 = await import("@/services/r2Service");
+  const r2Key = r2.extractFileKeyFromUrl(fileUrl);
+  if (r2Key) {
+    await r2.deleteFileFromR2(r2Key);
+    return;
+  }
+  const serverStorage = await import("@/services/serverStorageService");
+  const serverKey = serverStorage.extractFileKeyFromUrl(fileUrl);
+  if (serverKey) {
+    await serverStorage.deleteFileFromR2(serverKey);
+  }
+}
+
+// Get a signed download URL for a fileUrl regardless of which backend it
+// was stored on — old documents are still on R2, new ones on server
+// storage, and a fileUrl alone doesn't say which without checking.
+export async function getSignedDownloadUrlForAnyBackend(fileUrl: string): Promise<string | null> {
+  const r2 = await import("@/services/r2Service");
+  const r2Key = r2.extractFileKeyFromUrl(fileUrl);
+  if (r2Key) {
+    return r2.getSignedDownloadUrl(r2Key);
+  }
+  const serverStorage = await import("@/services/serverStorageService");
+  const serverKey = serverStorage.extractFileKeyFromUrl(fileUrl);
+  if (serverKey) {
+    return serverStorage.getSignedDownloadUrl(serverKey);
+  }
+  return null;
+}
+
+// Upload document with file to server-side storage
 export function useUploadDocument() {
   const queryClient = useQueryClient();
 
@@ -23,10 +59,9 @@ export function useUploadDocument() {
         tags?: string[];
       };
     }) => {
-      const { uploadFileToR2 } = await import("@/services/r2Service");
+      const { uploadFileToR2 } = await import("@/services/serverStorageService");
       const { createDocumentRecord } = await import("@/services/documentService");
 
-      // Upload file to R2
       const { fileUrl, fileSize, mimeType } = await uploadFileToR2(file, "documents");
 
       // Create document record in Firestore
@@ -72,7 +107,7 @@ export function useUpdateDocument() {
   });
 }
 
-// Delete document and its file from R2
+// Delete document and its file (from whichever backend it's actually stored on)
 export function useDeleteDocument() {
   const queryClient = useQueryClient();
 
@@ -80,16 +115,11 @@ export function useDeleteDocument() {
     mutationFn: async ({ documentId, fileUrl }: { documentId: string; fileUrl?: string }) => {
       const { deleteDocumentRecord } = await import("@/services/documentService");
 
-      // Delete file from R2 if exists
       if (fileUrl) {
         try {
-          const { extractFileKeyFromUrl, deleteFileFromR2 } = await import("@/services/r2Service");
-          const fileKey = extractFileKeyFromUrl(fileUrl);
-          if (fileKey) {
-            await deleteFileFromR2(fileKey);
-          }
+          await deleteExistingFile(fileUrl);
         } catch (error) {
-          console.error("Failed to delete file from R2:", error);
+          console.error("Failed to delete stored file:", error);
         }
       }
 
@@ -116,22 +146,19 @@ export function useReplaceDocumentFile() {
       file: File;
       oldFileUrl?: string;
     }) => {
-      const { uploadFileToR2, extractFileKeyFromUrl, deleteFileFromR2 } = await import("@/services/r2Service");
+      const { uploadFileToR2 } = await import("@/services/serverStorageService");
       const { attachFileToDocument } = await import("@/services/documentService");
 
-      // Delete old file if exists
+      // Delete old file if exists (may be on either backend)
       if (oldFileUrl) {
         try {
-          const oldFileKey = extractFileKeyFromUrl(oldFileUrl);
-          if (oldFileKey) {
-            await deleteFileFromR2(oldFileKey);
-          }
+          await deleteExistingFile(oldFileUrl);
         } catch (error) {
-          console.error("Failed to delete old file from R2:", error);
+          console.error("Failed to delete old stored file:", error);
         }
       }
 
-      // Upload new file
+      // Upload new file to server storage
       const { fileUrl, fileSize, mimeType } = await uploadFileToR2(file, "documents");
 
       // Update document record

@@ -3,9 +3,9 @@ import { Upload, FolderOpen, FileText, File, Image, Download, Trash2, Search, X,
 import { Button, Card, CardContent, Input, Skeleton, Modal, Label, Select, Textarea } from "@/components/ui";
 import { cn, getRelativeTime } from "@/lib/utils";
 import { useRealtimeDocuments, useClients, useProjects } from "@/hooks/useFirestore";
-import { useUploadDocument, useDeleteDocument } from "@/hooks/useDocuments";
+import { useUploadDocument, useDeleteDocument, getSignedDownloadUrlForAnyBackend } from "@/hooks/useDocuments";
 import { useAuthStore } from "@/store/authStore";
-import { validateFile, formatFileSize, ALLOWED_DOCUMENT_TYPES, extractFileKeyFromUrl, getSignedDownloadUrl } from "@/services/r2Service";
+import { validateFile, formatFileSize, ALLOWED_DOCUMENT_TYPES } from "@/services/serverStorageService";
 import type { DocumentType } from "@/types";
 import toast from "react-hot-toast";
 
@@ -67,12 +67,11 @@ export default function DocumentsPage() {
   const handleDownload = async (docId: string, fileUrl: string, fileName: string) => {
     setDownloadingId(docId);
     try {
-      const fileKey = extractFileKeyFromUrl(fileUrl);
-      if (!fileKey) {
-        toast.error("Unable to extract file key");
+      const signedUrl = await getSignedDownloadUrlForAnyBackend(fileUrl);
+      if (!signedUrl) {
+        toast.error("Unable to resolve file location");
         return;
       }
-      const signedUrl = await getSignedDownloadUrl(fileKey);
       // Open in new tab or trigger download
       const link = document.createElement("a");
       link.href = signedUrl;

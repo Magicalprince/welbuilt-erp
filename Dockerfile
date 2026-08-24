@@ -44,6 +44,14 @@ COPY --from=frontend-build /repo/frontend/dist ./frontend/dist
 
 ENV NODE_ENV=production
 ENV PORT=3000
+# Server-side document storage (replaces Cloudflare R2 for new uploads).
+# /data/documents is where the Dokploy-managed volume gets mounted in
+# production — set as a named volume on the application, NOT baked into
+# the image, so uploaded files survive redeploys. STORAGE_SIGNING_SECRET
+# and PUBLIC_BASE_URL must be set as real runtime env vars in Dokploy;
+# there is no safe default for a signing secret.
+ENV STORAGE_ROOT=/data/documents
+RUN mkdir -p /data/documents
 EXPOSE 3000
 
 WORKDIR /repo/server

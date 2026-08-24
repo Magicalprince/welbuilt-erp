@@ -14,6 +14,7 @@ import {
   Send,
   X,
   Filter,
+  Download,
 } from "lucide-react";
 import {
   Button,
@@ -35,9 +36,10 @@ import {
   deleteQuotation,
 } from "@/services/quotationService";
 import { useClients, useProjects, useCreateInvoice } from "@/hooks/useFirestore";
+import { generateAndDownloadQuotationPdf } from "@/services/quotationPdfService";
 import { formatCurrency, formatDate, cn } from "@/lib/utils";
 import toast from "react-hot-toast";
-import type { Quotation, QuotationStatus, GSTType, QuotationLineItem } from "@/types";
+import type { Quotation, QuotationStatus, GSTType, QuotationLineItem, Client, Project } from "@/types";
 
 const STATUS_OPTIONS = [
   { value: "ALL", label: "All Status" },
@@ -95,6 +97,7 @@ export default function QuotationsPage() {
     queryFn: getAllQuotations,
   });
   const { data: clients } = useClients();
+  const { data: projects } = useProjects();
   const createInvoiceMutation = useCreateInvoice();
 
   const deleteMutation = useMutation({
@@ -369,6 +372,8 @@ export default function QuotationsPage() {
         <QuotationDetailModal
           quotation={viewQuotation}
           clientName={clientMap[viewQuotation.clientId] || "Unknown"}
+          client={clients?.find((c) => c.id === viewQuotation.clientId) ?? null}
+          project={projects?.find((p) => p.id === viewQuotation.projectId) ?? null}
           onClose={() => setViewQuotation(null)}
           onConvert={() => convertMutation.mutate(viewQuotation)}
           converting={convertMutation.isPending}
@@ -689,6 +694,8 @@ function CreateQuotationModal({
 function QuotationDetailModal({
   quotation,
   clientName,
+  client,
+  project,
   onClose,
   onConvert,
   converting,
@@ -696,12 +703,27 @@ function QuotationDetailModal({
 }: {
   quotation: Quotation;
   clientName: string;
+  client: Client | null;
+  project: Project | null;
   onClose: () => void;
   onConvert: () => void;
   converting: boolean;
   onStatusChange: (s: QuotationStatus) => void;
 }) {
   const cfg = statusConfig(quotation.status);
+  const [isDownloading, setIsDownloading] = useState(false);
+
+  const handleDownloadPdf = async () => {
+    if (!client) return;
+    setIsDownloading(true);
+    try {
+      await generateAndDownloadQuotationPdf(quotation, client, project);
+    } catch {
+      toast.error("Failed to generate quotation PDF");
+    } finally {
+      setIsDownloading(false);
+    }
+  };
 
   return (
     <Modal isOpen onClose={onClose} title={`Quotation — ${quotation.quotationNumber}`} className="max-w-2xl">
@@ -821,6 +843,13 @@ function QuotationDetailModal({
         </div>
         <div className="flex gap-2">
           <Button variant="outline" onClick={onClose}>Close</Button>
+          <Button variant="outline" onClick={handleDownloadPdf} disabled={isDownloading || !client}>
+            {isDownloading ? (
+              <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Generating...</>
+            ) : (
+              <><Download className="h-4 w-4 mr-2" />Download PDF</>
+            )}
+          </Button>
           {!quotation.convertedToInvoiceId && (quotation.status === "SENT" || quotation.status === "ACCEPTED") && (
             <Button onClick={onConvert} disabled={converting}>
               {converting ? (

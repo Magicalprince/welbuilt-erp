@@ -4,6 +4,7 @@ import { ArrowLeft, Download, Send, CheckCircle2, CreditCard } from "lucide-reac
 import { Button, Card, CardContent, CardHeader, CardTitle, Badge, Progress, Modal, Select, Skeleton } from "@/components/ui";
 import { formatCurrency, formatDate, cn } from "@/lib/utils";
 import { useInvoice, useClient, useProject, useRecordPayment, useUpdateInvoice } from "@/hooks/useFirestore";
+import { generateAndDownloadInvoicePdf } from "@/services/invoicePdfService";
 import toast from "react-hot-toast";
 import type { InvoiceStatus } from "@/types";
 
@@ -32,6 +33,19 @@ export default function InvoiceDetailPage() {
     amount: number;
   } | null>(null);
   const [paymentMethod, setPaymentMethod] = useState("bank");
+  const [isDownloading, setIsDownloading] = useState(false);
+
+  const handleDownloadPdf = async () => {
+    if (!invoice || !client) return;
+    setIsDownloading(true);
+    try {
+      await generateAndDownloadInvoicePdf(invoice, client, project ?? null);
+    } catch {
+      toast.error("Failed to generate invoice PDF");
+    } finally {
+      setIsDownloading(false);
+    }
+  };
 
   const paidAmount = useMemo(() => {
     if (!invoice?.payments) return invoice?.paidAmount || 0;
@@ -125,9 +139,9 @@ export default function InvoiceDetailPage() {
               Mark as Paid
             </Button>
           )}
-          <Button variant="outline">
+          <Button variant="outline" onClick={handleDownloadPdf} disabled={isDownloading || !client}>
             <Download className="h-4 w-4 mr-2" />
-            Download PDF
+            {isDownloading ? "Generating..." : "Download PDF"}
           </Button>
           <Button variant="outline">
             <Send className="h-4 w-4 mr-2" />

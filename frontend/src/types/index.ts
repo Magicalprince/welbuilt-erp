@@ -23,6 +23,7 @@ export interface Client {
   email: string;
   phone?: string;
   address?: string;
+  gstNumber?: string;
   status: ClientStatus;
   source?: string;
   notes?: string;
@@ -124,6 +125,7 @@ export interface Invoice {
   status: InvoiceStatus;
   notes?: string;
   payments: InvoicePayment[];
+  brand?: "welbuilt" | "sparks";  // which brand issues this invoice, defaults to "sparks"
   // GST fields — optional for backward compat with existing invoices
   gstType?: GSTType;
   cgstPercent?: number;
@@ -417,6 +419,7 @@ export interface Quotation {
   status: QuotationStatus;
   notes?: string;
   terms?: string;
+  brand?: "welbuilt" | "sparks";  // which brand issues this quotation, defaults to "sparks"
   gstType?: GSTType;
   cgstPercent?: number;
   sgstPercent?: number;
