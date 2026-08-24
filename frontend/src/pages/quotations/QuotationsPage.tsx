@@ -35,7 +35,7 @@ import {
   updateQuotation,
   deleteQuotation,
 } from "@/services/quotationService";
-import { useClients, useProjects, useCreateInvoice } from "@/hooks/useFirestore";
+import { useClients, useProjects, useCreateInvoice, useCreateClient, useCreateProject } from "@/hooks/useFirestore";
 import { generateAndDownloadQuotationPdf } from "@/services/quotationPdfService";
 import { formatCurrency, formatDate, cn } from "@/lib/utils";
 import toast from "react-hot-toast";
@@ -419,9 +419,23 @@ function CreateQuotationModal({
   onSuccess: () => void;
 }) {
   const { data: allProjects } = useProjects();
+  const createClientMutation = useCreateClient();
+  const createProjectMutation = useCreateProject();
 
   const [clientId, setClientId] = useState("");
   const [projectId, setProjectId] = useState("");
+  const [showNewClientForm, setShowNewClientForm] = useState(false);
+  const [showNewProjectForm, setShowNewProjectForm] = useState(false);
+  const [newClient, setNewClient] = useState({
+    companyName: "",
+    contactPerson: "",
+    email: "",
+    phone: "",
+    address: "",
+    gstNumber: "",
+  });
+  const [newProjectTitle, setNewProjectTitle] = useState("");
+  const [newProjectValue, setNewProjectValue] = useState(0);
   const [issueDate, setIssueDate] = useState(new Date().toISOString().split("T")[0]);
   const [validUntil, setValidUntil] = useState(() => {
     const d = new Date();
@@ -462,6 +476,59 @@ function CreateQuotationModal({
         return updated;
       })
     );
+  };
+
+  const handleCreateClient = async () => {
+    if (!newClient.companyName || !newClient.contactPerson || !newClient.email) {
+      toast.error("Company name, contact person, and email are required");
+      return;
+    }
+    try {
+      const created = await createClientMutation.mutateAsync({
+        companyName: newClient.companyName,
+        contactPerson: newClient.contactPerson,
+        email: newClient.email,
+        phone: newClient.phone || undefined,
+        address: newClient.address || undefined,
+        gstNumber: newClient.gstNumber || undefined,
+        status: "PROSPECTIVE",
+      });
+      setClientId(created);
+      setShowNewClientForm(false);
+      setNewClient({ companyName: "", contactPerson: "", email: "", phone: "", address: "", gstNumber: "" });
+      toast.success("Client added");
+    } catch {
+      toast.error("Failed to add client");
+    }
+  };
+
+  const handleCreateProject = async () => {
+    if (!clientId) {
+      toast.error("Select a client first");
+      return;
+    }
+    if (!newProjectTitle) {
+      toast.error("Project title is required");
+      return;
+    }
+    try {
+      const created = await createProjectMutation.mutateAsync({
+        data: {
+          title: newProjectTitle,
+          status: "PLANNING",
+          value: newProjectValue,
+          startDate: new Date(),
+          clientId,
+        },
+      });
+      setProjectId(created);
+      setShowNewProjectForm(false);
+      setNewProjectTitle("");
+      setNewProjectValue(0);
+      toast.success("Project added");
+    } catch {
+      toast.error("Failed to add project");
+    }
   };
 
   const handleSubmit = async () => {
@@ -506,22 +573,113 @@ function CreateQuotationModal({
         <div className="grid grid-cols-2 gap-4">
           <div>
             <Label>Client *</Label>
-            <Select
-              value={clientId}
-              onChange={(e) => { setClientId(e.target.value); setProjectId(""); }}
-              options={clients.map((c) => ({ value: c.id, label: c.companyName }))}
-              placeholder="Select client"
-            />
+            {!showNewClientForm ? (
+              <>
+                <Select
+                  value={clientId}
+                  onChange={(e) => {
+                    if (e.target.value === "__new__") {
+                      setShowNewClientForm(true);
+                      return;
+                    }
+                    setClientId(e.target.value);
+                    setProjectId("");
+                  }}
+                  options={[
+                    ...clients.map((c) => ({ value: c.id, label: c.companyName })),
+                    { value: "__new__", label: "+ Add new client..." },
+                  ]}
+                  placeholder="Select client"
+                />
+              </>
+            ) : (
+              <div className="mt-1 p-3 border rounded-lg space-y-2 bg-muted/30">
+                <Input
+                  placeholder="Company name *"
+                  value={newClient.companyName}
+                  onChange={(e) => setNewClient((c) => ({ ...c, companyName: e.target.value }))}
+                />
+                <Input
+                  placeholder="Contact person *"
+                  value={newClient.contactPerson}
+                  onChange={(e) => setNewClient((c) => ({ ...c, contactPerson: e.target.value }))}
+                />
+                <Input
+                  placeholder="Email *"
+                  type="email"
+                  value={newClient.email}
+                  onChange={(e) => setNewClient((c) => ({ ...c, email: e.target.value }))}
+                />
+                <Input
+                  placeholder="Phone"
+                  value={newClient.phone}
+                  onChange={(e) => setNewClient((c) => ({ ...c, phone: e.target.value }))}
+                />
+                <Input
+                  placeholder="GSTIN (optional)"
+                  value={newClient.gstNumber}
+                  onChange={(e) => setNewClient((c) => ({ ...c, gstNumber: e.target.value }))}
+                />
+                <Textarea
+                  placeholder="Address (optional)"
+                  value={newClient.address}
+                  onChange={(e) => setNewClient((c) => ({ ...c, address: e.target.value }))}
+                  rows={2}
+                />
+                <div className="flex gap-2 justify-end">
+                  <Button type="button" variant="outline" size="sm" onClick={() => setShowNewClientForm(false)}>
+                    Cancel
+                  </Button>
+                  <Button type="button" size="sm" onClick={handleCreateClient} disabled={createClientMutation.isPending}>
+                    {createClientMutation.isPending ? "Adding..." : "Add Client"}
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
           <div>
             <Label>Project (Optional)</Label>
-            <Select
-              value={projectId}
-              onChange={(e) => setProjectId(e.target.value)}
-              options={clientProjects.map((p) => ({ value: p.id, label: p.title }))}
-              placeholder="Select project"
-              disabled={!clientId}
-            />
+            {!showNewProjectForm ? (
+              <Select
+                value={projectId}
+                onChange={(e) => {
+                  if (e.target.value === "__new__") {
+                    setShowNewProjectForm(true);
+                    return;
+                  }
+                  setProjectId(e.target.value);
+                }}
+                options={[
+                  ...clientProjects.map((p) => ({ value: p.id, label: p.title })),
+                  ...(clientId ? [{ value: "__new__", label: "+ Add new project..." }] : []),
+                ]}
+                placeholder="Select project"
+                disabled={!clientId}
+              />
+            ) : (
+              <div className="mt-1 p-3 border rounded-lg space-y-2 bg-muted/30">
+                <Input
+                  placeholder="Project title *"
+                  value={newProjectTitle}
+                  onChange={(e) => setNewProjectTitle(e.target.value)}
+                />
+                <Input
+                  placeholder="Estimated value (₹)"
+                  type="number"
+                  min="0"
+                  value={newProjectValue}
+                  onChange={(e) => setNewProjectValue(Number(e.target.value))}
+                />
+                <div className="flex gap-2 justify-end">
+                  <Button type="button" variant="outline" size="sm" onClick={() => setShowNewProjectForm(false)}>
+                    Cancel
+                  </Button>
+                  <Button type="button" size="sm" onClick={handleCreateProject} disabled={createProjectMutation.isPending}>
+                    {createProjectMutation.isPending ? "Adding..." : "Add Project"}
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
