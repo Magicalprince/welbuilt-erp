@@ -1,0 +1,12 @@
+# Dependencies
+node_modules
+
+# Environment variables — real secrets live only in Vercel project settings
+# and local .env files, never committed. See frontend/.env.example for the
+# expected shape.
+.env
+.env.local
+.env.*.local
+
+# OS/editor
+.DS_Store

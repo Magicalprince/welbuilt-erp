@@ -1,52 +1,45 @@
-import { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
-import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import { auth } from "@/config/firebase";
 
-// R2 Configuration from environment variables
-const R2_ACCESS_KEY_ID = import.meta.env.VITE_R2_ACCESS_KEY_ID;
-const R2_SECRET_ACCESS_KEY = import.meta.env.VITE_R2_SECRET_ACCESS_KEY;
-const R2_BUCKET_NAME = import.meta.env.VITE_R2_BUCKET_NAME;
-const R2_ENDPOINT = import.meta.env.VITE_R2_ENDPOINT;
-const R2_PUBLIC_URL = import.meta.env.VITE_R2_PUBLIC_URL;
+// All R2 signing now happens server-side (api/r2-presign.ts) — the R2
+// secret access key is never sent to the browser. This file only talks to
+// that endpoint, authenticated with the current user's Firebase ID token.
 
-// Initialize S3 Client for R2
-const s3Client = new S3Client({
-  region: "auto",
-  endpoint: R2_ENDPOINT,
-  credentials: {
-    accessKeyId: R2_ACCESS_KEY_ID,
-    secretAccessKey: R2_SECRET_ACCESS_KEY,
-  },
-  // Force path-style URLs (required for R2)
-  forcePathStyle: true,
-  // Disable checksum headers that cause CORS issues with R2
-  requestChecksumCalculation: "WHEN_REQUIRED",
-  responseChecksumValidation: "WHEN_REQUIRED",
-});
+async function callPresignEndpoint<T>(body: Record<string, unknown>): Promise<T> {
+  const user = auth.currentUser;
+  if (!user) {
+    throw new Error("Not authenticated");
+  }
+  const idToken = await user.getIdToken();
 
-// Generate a unique file key with folder structure
-function generateFileKey(folder: string, fileName: string): string {
-  const timestamp = Date.now();
-  const sanitizedFileName = fileName.replace(/[^a-zA-Z0-9.-]/g, "_");
-  return `${folder}/${timestamp}-${sanitizedFileName}`;
+  const response = await fetch("/api/r2-presign", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${idToken}`,
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.json().catch(() => ({}));
+    throw new Error(errorBody.error || `Request failed: ${response.status}`);
+  }
+
+  return response.json();
 }
 
-// Upload file to R2 using presigned URL (browser-compatible)
+// Upload file to R2 using a presigned URL obtained from the server
 export async function uploadFileToR2(
   file: File,
   folder: string = "documents"
 ): Promise<{ fileUrl: string; fileKey: string; fileSize: number; mimeType: string }> {
-  const fileKey = generateFileKey(folder, file.name);
-
-  // Generate a presigned URL for upload
-  const command = new PutObjectCommand({
-    Bucket: R2_BUCKET_NAME,
-    Key: fileKey,
-    ContentType: file.type,
+  const { url: presignedUrl, fileKey } = await callPresignEndpoint<{ url: string; fileKey: string }>({
+    action: "presignUpload",
+    folder,
+    fileName: file.name,
+    contentType: file.type,
   });
 
-  const presignedUrl = await getSignedUrl(s3Client, command, { expiresIn: 3600 });
-
-  // Upload using the presigned URL with fetch
   const response = await fetch(presignedUrl, {
     method: "PUT",
     body: file,
@@ -60,10 +53,7 @@ export async function uploadFileToR2(
     throw new Error(`Upload failed: ${response.status} ${response.statusText}`);
   }
 
-  // Generate the file URL
-  const fileUrl = R2_PUBLIC_URL
-    ? `${R2_PUBLIC_URL}/${fileKey}`
-    : `${R2_ENDPOINT}/${R2_BUCKET_NAME}/${fileKey}`;
+  const fileUrl = buildPublicUrl(fileKey);
 
   return {
     fileUrl,
@@ -73,21 +63,17 @@ export async function uploadFileToR2(
   };
 }
 
-// Upload file with specific key (for updates)
+// Upload file with a specific key (for updates)
 export async function uploadFileWithKey(
   file: File,
   fileKey: string
 ): Promise<{ fileUrl: string; fileSize: number; mimeType: string }> {
-  // Generate a presigned URL for upload
-  const command = new PutObjectCommand({
-    Bucket: R2_BUCKET_NAME,
-    Key: fileKey,
-    ContentType: file.type,
+  const { url: presignedUrl } = await callPresignEndpoint<{ url: string; fileKey: string }>({
+    action: "presignUploadWithKey",
+    fileKey,
+    contentType: file.type,
   });
 
-  const presignedUrl = await getSignedUrl(s3Client, command, { expiresIn: 3600 });
-
-  // Upload using the presigned URL with fetch
   const response = await fetch(presignedUrl, {
     method: "PUT",
     body: file,
@@ -101,12 +87,8 @@ export async function uploadFileWithKey(
     throw new Error(`Upload failed: ${response.status} ${response.statusText}`);
   }
 
-  const fileUrl = R2_PUBLIC_URL
-    ? `${R2_PUBLIC_URL}/${fileKey}`
-    : `${R2_ENDPOINT}/${R2_BUCKET_NAME}/${fileKey}`;
-
   return {
-    fileUrl,
+    fileUrl: buildPublicUrl(fileKey),
     fileSize: file.size,
     mimeType: file.type,
   };
@@ -114,22 +96,20 @@ export async function uploadFileWithKey(
 
 // Delete file from R2
 export async function deleteFileFromR2(fileKey: string): Promise<void> {
-  const command = new DeleteObjectCommand({
-    Bucket: R2_BUCKET_NAME,
-    Key: fileKey,
+  await callPresignEndpoint<{ success: boolean }>({
+    action: "delete",
+    fileKey,
   });
-
-  await s3Client.send(command);
 }
 
 // Get a signed URL for downloading (for private buckets)
 export async function getSignedDownloadUrl(fileKey: string, expiresIn: number = 3600): Promise<string> {
-  const command = new GetObjectCommand({
-    Bucket: R2_BUCKET_NAME,
-    Key: fileKey,
+  const { url } = await callPresignEndpoint<{ url: string }>({
+    action: "presignDownload",
+    fileKey,
+    expiresIn,
   });
-
-  return getSignedUrl(s3Client, command, { expiresIn });
+  return url;
 }
 
 // Get a signed URL for uploading (for direct browser uploads)
@@ -138,13 +118,25 @@ export async function getSignedUploadUrl(
   contentType: string,
   expiresIn: number = 3600
 ): Promise<string> {
-  const command = new PutObjectCommand({
-    Bucket: R2_BUCKET_NAME,
-    Key: fileKey,
-    ContentType: contentType,
+  const { url } = await callPresignEndpoint<{ url: string; fileKey: string }>({
+    action: "presignUploadWithKey",
+    fileKey,
+    contentType,
+    expiresIn,
   });
+  return url;
+}
 
-  return getSignedUrl(s3Client, command, { expiresIn });
+// Non-secret — just the bucket hostname/name, safe to ship to the browser.
+// Kept as VITE_ vars since existing stored fileUrls already use this format.
+const R2_PUBLIC_URL = import.meta.env.VITE_R2_PUBLIC_URL;
+const R2_ENDPOINT = import.meta.env.VITE_R2_ENDPOINT;
+const R2_BUCKET_NAME = import.meta.env.VITE_R2_BUCKET_NAME;
+
+function buildPublicUrl(fileKey: string): string {
+  return R2_PUBLIC_URL
+    ? `${R2_PUBLIC_URL}/${fileKey}`
+    : `${R2_ENDPOINT}/${R2_BUCKET_NAME}/${fileKey}`;
 }
 
 // Extract file key from URL
@@ -157,7 +149,7 @@ export function extractFileKeyFromUrl(fileUrl: string): string | null {
   }
 
   // Handle endpoint URL format
-  if (fileUrl.includes(R2_BUCKET_NAME)) {
+  if (R2_BUCKET_NAME && fileUrl.includes(R2_BUCKET_NAME)) {
     const parts = fileUrl.split(`${R2_BUCKET_NAME}/`);
     return parts[1] || null;
   }
