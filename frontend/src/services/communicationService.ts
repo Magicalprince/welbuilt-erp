@@ -79,30 +79,27 @@ export async function getAllCommunications(): Promise<Communication[]> {
 export async function getCommunicationsByClient(clientId: string): Promise<Communication[]> {
   const communications = await getDocuments<FirestoreCommunication>(
     COLLECTIONS.COMMUNICATIONS,
-    where("clientId", "==", clientId),
-    orderBy("date", "desc")
+    where("clientId", "==", clientId)
   );
-  return communications.map(toCommunication);
+  return communications.map(toCommunication).sort((a, b) => b.date.getTime() - a.date.getTime());
 }
 
 // Get communications by project
 export async function getCommunicationsByProject(projectId: string): Promise<Communication[]> {
   const communications = await getDocuments<FirestoreCommunication>(
     COLLECTIONS.COMMUNICATIONS,
-    where("projectId", "==", projectId),
-    orderBy("date", "desc")
+    where("projectId", "==", projectId)
   );
-  return communications.map(toCommunication);
+  return communications.map(toCommunication).sort((a, b) => b.date.getTime() - a.date.getTime());
 }
 
 // Get communications by type
 export async function getCommunicationsByType(type: CommunicationType): Promise<Communication[]> {
   const communications = await getDocuments<FirestoreCommunication>(
     COLLECTIONS.COMMUNICATIONS,
-    where("type", "==", type),
-    orderBy("date", "desc")
+    where("type", "==", type)
   );
-  return communications.map(toCommunication);
+  return communications.map(toCommunication).sort((a, b) => b.date.getTime() - a.date.getTime());
 }
 
 // Get communications with follow-ups due

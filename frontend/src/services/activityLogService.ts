@@ -48,14 +48,20 @@ export async function getRecentActivityLogs(count: number = 20): Promise<Activit
   return logs.map(toActivityLog);
 }
 
+// Sort newest first client-side — avoids requiring a Firestore composite
+// index for every where()+orderBy(createdAt) combination below (none are
+// deployed for this project; see firestore.indexes.json note in COLLECTIONS).
+function sortByCreatedAtDesc(logs: ActivityLog[]): ActivityLog[] {
+  return [...logs].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+}
+
 // Get activity logs by user
 export async function getActivityLogsByUser(userId: string): Promise<ActivityLog[]> {
   const logs = await getDocuments<FirestoreActivityLog>(
     COLLECTIONS.ACTIVITY_LOGS,
-    where("userId", "==", userId),
-    orderBy("createdAt", "desc")
+    where("userId", "==", userId)
   );
-  return logs.map(toActivityLog);
+  return sortByCreatedAtDesc(logs.map(toActivityLog));
 }
 
 // Get activity logs by entity
@@ -66,20 +72,18 @@ export async function getActivityLogsByEntity(
   const logs = await getDocuments<FirestoreActivityLog>(
     COLLECTIONS.ACTIVITY_LOGS,
     where("entityType", "==", entityType),
-    where("entityId", "==", entityId),
-    orderBy("createdAt", "desc")
+    where("entityId", "==", entityId)
   );
-  return logs.map(toActivityLog);
+  return sortByCreatedAtDesc(logs.map(toActivityLog));
 }
 
 // Get activity logs by action
 export async function getActivityLogsByAction(action: ActivityAction): Promise<ActivityLog[]> {
   const logs = await getDocuments<FirestoreActivityLog>(
     COLLECTIONS.ACTIVITY_LOGS,
-    where("action", "==", action),
-    orderBy("createdAt", "desc")
+    where("action", "==", action)
   );
-  return logs.map(toActivityLog);
+  return sortByCreatedAtDesc(logs.map(toActivityLog));
 }
 
 // Get activity logs by date range
@@ -546,8 +550,7 @@ export async function logMouSigned(
 export async function getInternActivityLogs(): Promise<ActivityLog[]> {
   const logs = await getDocuments<FirestoreActivityLog>(
     COLLECTIONS.ACTIVITY_LOGS,
-    where("entityType", "==", "INTERN"),
-    orderBy("createdAt", "desc")
+    where("entityType", "==", "INTERN")
   );
-  return logs.map(toActivityLog);
+  return sortByCreatedAtDesc(logs.map(toActivityLog));
 }

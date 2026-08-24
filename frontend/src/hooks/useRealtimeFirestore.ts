@@ -37,6 +37,19 @@ function convertTimestamps<T extends Record<string, unknown>>(data: T): T {
   return result;
 }
 
+// Sort newest-first client-side. Used whenever a hook filters with where()
+// on a field other than createdAt — Firestore requires a composite index
+// for where(X)+orderBy(createdAt) when X !== "createdAt", and none are
+// deployed for this project, so that combination 400s. Sorting here instead
+// keeps every "by X" real-time hook index-free.
+function sortByCreatedAtDesc<T extends { createdAt?: unknown }>(data: T[]): T[] {
+  return [...data].sort((a, b) => {
+    const aTime = a.createdAt instanceof Date ? a.createdAt.getTime() : 0;
+    const bTime = b.createdAt instanceof Date ? b.createdAt.getTime() : 0;
+    return bTime - aTime;
+  });
+}
+
 // ============================================
 // Real-time Collection Hook
 // ============================================
@@ -44,7 +57,8 @@ export function useRealtimeCollection<T>(
   collectionName: string,
   queryKey: readonly unknown[],
   constraints: QueryConstraint[] = [],
-  enabled: boolean = true
+  enabled: boolean = true,
+  sortClientSide: boolean = false
 ) {
   const queryClient = useQueryClient();
 
@@ -68,10 +82,14 @@ export function useRealtimeCollection<T>(
     const unsubscribe = onSnapshot(
       q,
       (snapshot) => {
-        const data = snapshot.docs.map((docSnap) => ({
+        let data = snapshot.docs.map((docSnap) => ({
           id: docSnap.id,
           ...convertTimestamps(docSnap.data()),
         })) as T[];
+
+        if (sortClientSide) {
+          data = sortByCreatedAtDesc(data as Array<T & { createdAt?: unknown }>) as T[];
+        }
 
         // Update React Query cache with real-time data
         queryClient.setQueryData(queryKeyRef.current, data);
@@ -83,7 +101,7 @@ export function useRealtimeCollection<T>(
 
     return () => unsubscribe();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [collectionName, queryClient, enabled, queryKeyString, constraintsString]);
+  }, [collectionName, queryClient, enabled, queryKeyString, constraintsString, sortClientSide]);
 
   // Use React Query to get the cached data
   return useQuery<T[]>({
@@ -174,7 +192,9 @@ export function useRealtimeClientsByStatus(status: ClientStatus) {
   return useRealtimeCollection<Client>(
     COLLECTIONS.CLIENTS,
     queryKeys.clientsByStatus(status),
-    [where("status", "==", status), orderBy("createdAt", "desc")]
+    [where("status", "==", status)],
+    true,
+    true
   );
 }
 
@@ -201,8 +221,9 @@ export function useRealtimeProjectsByClient(clientId: string) {
   return useRealtimeCollection<Project>(
     COLLECTIONS.PROJECTS,
     queryKeys.projectsByClient(clientId),
-    [where("clientId", "==", clientId), orderBy("createdAt", "desc")],
-    !!clientId
+    [where("clientId", "==", clientId)],
+    !!clientId,
+    true
   );
 }
 
@@ -210,7 +231,9 @@ export function useRealtimeProjectsByStatus(status: ProjectStatus) {
   return useRealtimeCollection<Project>(
     COLLECTIONS.PROJECTS,
     queryKeys.projectsByStatus(status),
-    [where("status", "==", status), orderBy("createdAt", "desc")]
+    [where("status", "==", status)],
+    true,
+    true
   );
 }
 
@@ -237,8 +260,9 @@ export function useRealtimeInvoicesByClient(clientId: string) {
   return useRealtimeCollection<Invoice>(
     COLLECTIONS.INVOICES,
     queryKeys.invoicesByClient(clientId),
-    [where("clientId", "==", clientId), orderBy("createdAt", "desc")],
-    !!clientId
+    [where("clientId", "==", clientId)],
+    !!clientId,
+    true
   );
 }
 
@@ -268,8 +292,9 @@ export function useRealtimeWithdrawalsByFounder(founderId: string) {
   return useRealtimeCollection<Withdrawal>(
     COLLECTIONS.WITHDRAWALS,
     queryKeys.withdrawalsByFounder(founderId),
-    [where("founderId", "==", founderId), orderBy("createdAt", "desc")],
-    !!founderId
+    [where("founderId", "==", founderId)],
+    !!founderId,
+    true
   );
 }
 
@@ -296,8 +321,9 @@ export function useRealtimeNotesByProject(projectId: string) {
   return useRealtimeCollection<Note>(
     COLLECTIONS.NOTES,
     queryKeys.notesByProject(projectId),
-    [where("projectId", "==", projectId), orderBy("createdAt", "desc")],
-    !!projectId
+    [where("projectId", "==", projectId)],
+    !!projectId,
+    true
   );
 }
 
@@ -305,8 +331,9 @@ export function useRealtimeNotesByClient(clientId: string) {
   return useRealtimeCollection<Note>(
     COLLECTIONS.NOTES,
     queryKeys.notesByClient(clientId),
-    [where("clientId", "==", clientId), orderBy("createdAt", "desc")],
-    !!clientId
+    [where("clientId", "==", clientId)],
+    !!clientId,
+    true
   );
 }
 
@@ -333,7 +360,9 @@ export function useRealtimeDocumentsByType(type: DocumentType) {
   return useRealtimeCollection<Document>(
     COLLECTIONS.DOCUMENTS,
     queryKeys.documentsByType(type),
-    [where("type", "==", type), orderBy("createdAt", "desc")]
+    [where("type", "==", type)],
+    true,
+    true
   );
 }
 
@@ -341,8 +370,9 @@ export function useRealtimeDocumentsByProject(projectId: string) {
   return useRealtimeCollection<Document>(
     COLLECTIONS.DOCUMENTS,
     queryKeys.documentsByProject(projectId),
-    [where("projectId", "==", projectId), orderBy("createdAt", "desc")],
-    !!projectId
+    [where("projectId", "==", projectId)],
+    !!projectId,
+    true
   );
 }
 
@@ -350,8 +380,9 @@ export function useRealtimeDocumentsByClient(clientId: string) {
   return useRealtimeCollection<Document>(
     COLLECTIONS.DOCUMENTS,
     queryKeys.documentsByClient(clientId),
-    [where("clientId", "==", clientId), orderBy("createdAt", "desc")],
-    !!clientId
+    [where("clientId", "==", clientId)],
+    !!clientId,
+    true
   );
 }
 
