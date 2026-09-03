@@ -12,6 +12,7 @@ import {
   buildSignedDownloadUrl,
   verifyDownloadToken,
 } from "./_storageCore";
+import { listSparksEnquiries, updateSparksEnquiryStatus } from "./_sparksLeadsCore";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DIST_DIR = path.resolve(__dirname, "../frontend/dist");
@@ -147,6 +148,49 @@ app.get("/storage/:fileKey(*)", async (req, res) => {
     res.status(200).send(buffer);
   } catch {
     res.status(404).json({ error: "Not found" });
+  }
+});
+
+// ── Sparks AI website enquiries (read/status-update into sparks-leads-db) ──
+
+app.get("/api/sparks-enquiries", async (req, res) => {
+  try {
+    await verifyAuthHeader(req.headers.authorization);
+  } catch {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  try {
+    const enquiries = await listSparksEnquiries();
+    res.status(200).json({ enquiries });
+  } catch (error) {
+    console.error("Sparks enquiries list error:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+app.patch("/api/sparks-enquiries/:id/status", async (req, res) => {
+  try {
+    await verifyAuthHeader(req.headers.authorization);
+  } catch {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  const status = typeof req.body?.status === "string" ? req.body.status.trim() : "";
+  if (!status) {
+    res.status(400).json({ error: "status is required" });
+    return;
+  }
+  try {
+    const updated = await updateSparksEnquiryStatus(req.params.id, status);
+    if (!updated) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
+    res.status(200).json({ enquiry: updated });
+  } catch (error) {
+    console.error("Sparks enquiry status update error:", error);
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 

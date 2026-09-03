@@ -9,6 +9,10 @@ import {
   Target,
   Trash2,
   Users,
+  Globe,
+  ArrowRight,
+  Archive,
+  MailCheck,
 } from "lucide-react";
 import {
   Button,
@@ -22,7 +26,7 @@ import {
   Select,
   Textarea,
 } from "@/components/ui";
-import { cn, formatCurrency } from "@/lib/utils";
+import { cn, formatCurrency, formatDate, getRelativeTime } from "@/lib/utils";
 import {
   useSparksLeads,
   useReferrers,
@@ -30,6 +34,8 @@ import {
   useDeleteSparksLead,
   useCreateReferrer,
 } from "@/hooks/useLeads";
+import { useSparksEnquiries, useUpdateSparksEnquiryStatus } from "@/hooks/useSparksEnquiries";
+import type { SparksEnquiry } from "@/services/sparksEnquiriesService";
 import type {
   SparksLead,
   SparksLeadStatus,
@@ -41,6 +47,14 @@ import { LEAD_SOURCE_LABELS, SPARKS_LEAD_STATUS_LABELS } from "@/types";
 import ReferrersPanel from "./ReferrersPanel";
 import LeadDetailView from "./LeadDetailView";
 import toast from "react-hot-toast";
+
+type LeadPrefill = {
+  leadName: string;
+  contactNumber: string;
+  email: string;
+  projectName: string;
+  description: string;
+};
 
 const statusOptions: { value: SparksLeadStatus | "ALL"; label: string }[] = [
   { value: "ALL", label: "All Statuses" },
@@ -78,18 +92,36 @@ function isOverdue(lead: SparksLead): boolean {
 }
 
 export default function SparksLeadsTab() {
+  const [view, setView] = useState<"leads" | "enquiries">("leads");
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<SparksLeadStatus | "ALL">("ALL");
   const [sourceFilter, setSourceFilter] = useState<LeadSource | "ALL">("ALL");
   const [showFilters, setShowFilters] = useState(false);
 
   const [isNewModalOpen, setIsNewModalOpen] = useState(false);
+  const [leadPrefill, setLeadPrefill] = useState<LeadPrefill | null>(null);
   const [detailLeadId, setDetailLeadId] = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<SparksLead | null>(null);
   const [isReferrersOpen, setIsReferrersOpen] = useState(false);
 
   const { data: leads, isLoading } = useSparksLeads();
   const deleteMutation = useDeleteSparksLead();
+  const { data: enquiries } = useSparksEnquiries();
+  const newEnquiryCount = useMemo(
+    () => enquiries?.filter((e) => e.status === "new").length ?? 0,
+    [enquiries]
+  );
+
+  const handleConvertEnquiry = (enquiry: SparksEnquiry) => {
+    setLeadPrefill({
+      leadName: enquiry.name,
+      contactNumber: enquiry.phone ?? "",
+      email: enquiry.email,
+      projectName: enquiry.topic || "Website enquiry",
+      description: enquiry.projectDescription,
+    });
+    setIsNewModalOpen(true);
+  };
 
   const detailLead = useMemo(
     () => (detailLeadId ? leads?.find((l) => l.id === detailLeadId) || null : null),
@@ -136,6 +168,41 @@ export default function SparksLeadsTab() {
 
   return (
     <div className="space-y-4">
+      <div className="flex gap-2 border-b">
+        <button
+          onClick={() => setView("leads")}
+          className={cn(
+            "px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors",
+            view === "leads"
+              ? "border-primary text-foreground"
+              : "border-transparent text-muted-foreground hover:text-foreground"
+          )}
+        >
+          Leads
+        </button>
+        <button
+          onClick={() => setView("enquiries")}
+          className={cn(
+            "px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors flex items-center gap-2",
+            view === "enquiries"
+              ? "border-primary text-foreground"
+              : "border-transparent text-muted-foreground hover:text-foreground"
+          )}
+        >
+          <Globe className="h-3.5 w-3.5" />
+          Website Enquiries
+          {newEnquiryCount > 0 && (
+            <Badge variant="destructive" className="text-[10px] px-1.5 py-0 h-4 min-w-4">
+              {newEnquiryCount}
+            </Badge>
+          )}
+        </button>
+      </div>
+
+      {view === "enquiries" ? (
+        <WebsiteEnquiriesView onConvert={handleConvertEnquiry} />
+      ) : (
+      <>
       <div className="flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
         <div className="flex flex-col sm:flex-row gap-2 flex-1">
           <div className="relative flex-1 max-w-md">
@@ -302,8 +369,14 @@ export default function SparksLeadsTab() {
           </CardContent>
         </Card>
       )}
+      </>
+      )}
 
-      <NewLeadModal isOpen={isNewModalOpen} onClose={() => setIsNewModalOpen(false)} />
+      <NewLeadModal
+        isOpen={isNewModalOpen}
+        onClose={() => { setIsNewModalOpen(false); setLeadPrefill(null); }}
+        prefill={leadPrefill}
+      />
 
       <ReferrersPanel isOpen={isReferrersOpen} onClose={() => setIsReferrersOpen(false)} />
 
@@ -333,7 +406,15 @@ export default function SparksLeadsTab() {
 // ============================================
 // New Lead Modal
 // ============================================
-function NewLeadModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
+function NewLeadModal({
+  isOpen,
+  onClose,
+  prefill,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  prefill?: LeadPrefill | null;
+}) {
   const createMutation = useCreateSparksLead();
   const { data: referrers } = useReferrers();
   const createReferrerMutation = useCreateReferrer();
@@ -359,12 +440,23 @@ function NewLeadModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => voi
 
   useEffect(() => {
     if (isOpen) {
-      setFormData(emptyForm);
+      setFormData(
+        prefill
+          ? {
+              ...emptyForm,
+              leadName: prefill.leadName,
+              contactNumber: prefill.contactNumber,
+              email: prefill.email,
+              projectName: prefill.projectName,
+              description: prefill.description,
+            }
+          : emptyForm
+      );
       setIsQuickAddOpen(false);
       setQuickAddForm({ name: "", phone: "" });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen]);
+  }, [isOpen, prefill]);
 
   const handleQuickAddReferrer = async () => {
     if (!quickAddForm.name.trim() || !quickAddForm.phone.trim()) {
@@ -621,6 +713,192 @@ function NewLeadModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => voi
         </div>
       </div>
     </Modal>
+  );
+}
+
+// ============================================
+// Website Enquiries — raw sparksai.in contact-form submissions, read from a
+// separate Postgres database (sparks-leads-db on Dokploy), not Firestore.
+// See docs/plans/2026-09-03-sparks-website-enquiries-design.md. This view is
+// deliberately read-mostly: the only write is the status column, and
+// "Convert to Lead" opens NewLeadModal pre-filled rather than silently
+// creating a SparksLead, matching how the rest of this module avoids
+// auto-creating pipeline records (see leads_crm memory).
+// ============================================
+
+const ENQUIRY_STATUS_OPTIONS = [
+  { value: "ALL", label: "All Statuses" },
+  { value: "new", label: "New" },
+  { value: "contacted", label: "Contacted" },
+  { value: "converted", label: "Converted" },
+  { value: "archived", label: "Archived" },
+];
+
+function enquiryStatusBadgeVariant(status: string): "secondary" | "warning" | "destructive" | "success" {
+  switch (status) {
+    case "new":
+      return "warning";
+    case "contacted":
+      return "secondary";
+    case "converted":
+      return "success";
+    case "archived":
+      return "destructive";
+    default:
+      return "secondary";
+  }
+}
+
+function WebsiteEnquiriesView({ onConvert }: { onConvert: (enquiry: SparksEnquiry) => void }) {
+  const { data: enquiries, isLoading, error } = useSparksEnquiries();
+  const updateStatusMutation = useUpdateSparksEnquiryStatus();
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState("ALL");
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  const filtered = useMemo(() => {
+    if (!enquiries) return [];
+    return enquiries.filter((e) => {
+      const q = searchQuery.toLowerCase();
+      const matchesSearch =
+        !q ||
+        e.name.toLowerCase().includes(q) ||
+        e.email.toLowerCase().includes(q) ||
+        (e.phone ?? "").toLowerCase().includes(q) ||
+        e.projectDescription.toLowerCase().includes(q);
+      const matchesStatus = statusFilter === "ALL" || e.status === statusFilter;
+      return matchesSearch && matchesStatus;
+    });
+  }, [enquiries, searchQuery, statusFilter]);
+
+  const setStatus = async (enquiry: SparksEnquiry, status: string) => {
+    try {
+      await updateStatusMutation.mutateAsync({ id: enquiry.id, status });
+    } catch {
+      toast.error("Failed to update status");
+    }
+  };
+
+  if (error) {
+    return (
+      <div className="text-center py-12">
+        <Globe className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+        <h3 className="text-lg font-semibold">Couldn't load website enquiries</h3>
+        <p className="text-muted-foreground text-sm mt-1">
+          {error instanceof Error ? error.message : "Unknown error"}
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-col sm:flex-row gap-2">
+        <div className="relative flex-1 max-w-md">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Search by name, email, phone..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-10"
+          />
+        </div>
+        <div className="w-full sm:w-48">
+          <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} options={ENQUIRY_STATUS_OPTIONS} />
+        </div>
+      </div>
+
+      {isLoading ? (
+        <div className="space-y-2">
+          {[...Array(3)].map((_, i) => (
+            <Skeleton key={i} className="h-20 w-full" />
+          ))}
+        </div>
+      ) : filtered.length === 0 ? (
+        <div className="text-center py-12">
+          <Globe className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+          <h3 className="text-lg font-semibold">No website enquiries</h3>
+          <p className="text-muted-foreground">
+            {enquiries && enquiries.length > 0
+              ? "Try adjusting your search or filter"
+              : "Submissions from sparksai.in's contact form will show up here"}
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {filtered.map((enquiry) => {
+            const isExpanded = expandedId === enquiry.id;
+            return (
+              <Card key={enquiry.id}>
+                <CardContent
+                  className="p-4 cursor-pointer"
+                  onClick={() => setExpandedId(isExpanded ? null : enquiry.id)}
+                >
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className="font-medium text-sm">{enquiry.name}</p>
+                        <Badge variant={enquiryStatusBadgeVariant(enquiry.status)} className="text-xs">
+                          {enquiry.status}
+                        </Badge>
+                        {enquiry.sourcePage && (
+                          <Badge variant="secondary" className="text-xs">{enquiry.sourcePage}</Badge>
+                        )}
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {enquiry.email} {enquiry.phone ? `• ${enquiry.phone}` : "• no phone given"}
+                      </p>
+                      <p className={cn("text-sm text-muted-foreground mt-1", !isExpanded && "truncate")}>
+                        {enquiry.projectDescription}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0" onClick={(e) => e.stopPropagation()}>
+                      <span className="text-xs text-muted-foreground whitespace-nowrap" title={formatDate(enquiry.createdAt)}>
+                        {getRelativeTime(enquiry.createdAt)}
+                      </span>
+                      {enquiry.status !== "contacted" && enquiry.status !== "converted" && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 px-2"
+                          title="Mark contacted"
+                          onClick={() => setStatus(enquiry, "contacted")}
+                          disabled={updateStatusMutation.isPending}
+                        >
+                          <MailCheck className="h-3.5 w-3.5" />
+                        </Button>
+                      )}
+                      {enquiry.status !== "archived" && enquiry.status !== "converted" && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 px-2"
+                          title="Archive"
+                          onClick={() => setStatus(enquiry, "archived")}
+                          disabled={updateStatusMutation.isPending}
+                        >
+                          <Archive className="h-3.5 w-3.5" />
+                        </Button>
+                      )}
+                      {enquiry.status !== "converted" && (
+                        <Button
+                          size="sm"
+                          className="h-7"
+                          onClick={() => onConvert(enquiry)}
+                        >
+                          <ArrowRight className="h-3.5 w-3.5 mr-1" />
+                          Convert to Lead
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+      )}
+    </div>
   );
 }
 
