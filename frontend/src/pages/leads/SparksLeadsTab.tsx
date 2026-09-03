@@ -11,8 +11,8 @@ import {
   Users,
   Globe,
   ArrowRight,
+  ArrowLeft,
   Archive,
-  MailCheck,
 } from "lucide-react";
 import {
   Button,
@@ -101,12 +101,14 @@ export default function SparksLeadsTab() {
   const [isNewModalOpen, setIsNewModalOpen] = useState(false);
   const [leadPrefill, setLeadPrefill] = useState<LeadPrefill | null>(null);
   const [detailLeadId, setDetailLeadId] = useState<string | null>(null);
+  const [detailEnquiryId, setDetailEnquiryId] = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<SparksLead | null>(null);
   const [isReferrersOpen, setIsReferrersOpen] = useState(false);
 
   const { data: leads, isLoading } = useSparksLeads();
   const deleteMutation = useDeleteSparksLead();
   const { data: enquiries } = useSparksEnquiries();
+  const updateEnquiryStatusMutation = useUpdateSparksEnquiryStatus();
   const newEnquiryCount = useMemo(
     () => enquiries?.filter((e) => e.status === "new").length ?? 0,
     [enquiries]
@@ -127,6 +129,21 @@ export default function SparksLeadsTab() {
     () => (detailLeadId ? leads?.find((l) => l.id === detailLeadId) || null : null),
     [leads, detailLeadId]
   );
+
+  const detailEnquiry = useMemo(
+    () => (detailEnquiryId ? enquiries?.find((e) => e.id === detailEnquiryId) || null : null),
+    [enquiries, detailEnquiryId]
+  );
+
+  // Opening an enquiry is what clears its "new" badge — no separate
+  // mark-as-read step. Only fires once per open (the "new" check itself
+  // prevents re-firing after the status has already moved on).
+  const handleOpenEnquiry = (enquiry: SparksEnquiry) => {
+    setDetailEnquiryId(enquiry.id);
+    if (enquiry.status === "new") {
+      updateEnquiryStatusMutation.mutate({ id: enquiry.id, status: "contacted" });
+    }
+  };
 
   const filteredLeads = useMemo(() => {
     if (!leads) return [];
@@ -166,6 +183,19 @@ export default function SparksLeadsTab() {
     return <LeadDetailView lead={detailLead} onBack={() => setDetailLeadId(null)} />;
   }
 
+  if (detailEnquiry) {
+    return (
+      <EnquiryDetailView
+        enquiry={detailEnquiry}
+        onBack={() => setDetailEnquiryId(null)}
+        onConvert={() => {
+          setDetailEnquiryId(null);
+          handleConvertEnquiry(detailEnquiry);
+        }}
+      />
+    );
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex gap-2 border-b">
@@ -200,7 +230,7 @@ export default function SparksLeadsTab() {
       </div>
 
       {view === "enquiries" ? (
-        <WebsiteEnquiriesView onConvert={handleConvertEnquiry} />
+        <WebsiteEnquiriesView onOpen={handleOpenEnquiry} />
       ) : (
       <>
       <div className="flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
@@ -749,35 +779,20 @@ function enquiryStatusBadgeVariant(status: string): "secondary" | "warning" | "d
   }
 }
 
-function WebsiteEnquiriesView({ onConvert }: { onConvert: (enquiry: SparksEnquiry) => void }) {
+function WebsiteEnquiriesView({ onOpen }: { onOpen: (enquiry: SparksEnquiry) => void }) {
   const { data: enquiries, isLoading, error } = useSparksEnquiries();
-  const updateStatusMutation = useUpdateSparksEnquiryStatus();
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
-  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const filtered = useMemo(() => {
     if (!enquiries) return [];
     return enquiries.filter((e) => {
       const q = searchQuery.toLowerCase();
-      const matchesSearch =
-        !q ||
-        e.name.toLowerCase().includes(q) ||
-        e.email.toLowerCase().includes(q) ||
-        (e.phone ?? "").toLowerCase().includes(q) ||
-        e.projectDescription.toLowerCase().includes(q);
+      const matchesSearch = !q || e.name.toLowerCase().includes(q);
       const matchesStatus = statusFilter === "ALL" || e.status === statusFilter;
       return matchesSearch && matchesStatus;
     });
   }, [enquiries, searchQuery, statusFilter]);
-
-  const setStatus = async (enquiry: SparksEnquiry, status: string) => {
-    try {
-      await updateStatusMutation.mutateAsync({ id: enquiry.id, status });
-    } catch {
-      toast.error("Failed to update status");
-    }
-  };
 
   if (error) {
     return (
@@ -797,7 +812,7 @@ function WebsiteEnquiriesView({ onConvert }: { onConvert: (enquiry: SparksEnquir
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Search by name, email, phone..."
+            placeholder="Search by name..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="pl-10"
@@ -811,7 +826,7 @@ function WebsiteEnquiriesView({ onConvert }: { onConvert: (enquiry: SparksEnquir
       {isLoading ? (
         <div className="space-y-2">
           {[...Array(3)].map((_, i) => (
-            <Skeleton key={i} className="h-20 w-full" />
+            <Skeleton key={i} className="h-14 w-full" />
           ))}
         </div>
       ) : filtered.length === 0 ? (
@@ -825,79 +840,130 @@ function WebsiteEnquiriesView({ onConvert }: { onConvert: (enquiry: SparksEnquir
           </p>
         </div>
       ) : (
-        <div className="space-y-2">
-          {filtered.map((enquiry) => {
-            const isExpanded = expandedId === enquiry.id;
-            return (
-              <Card key={enquiry.id}>
-                <CardContent
-                  className="p-4 cursor-pointer"
-                  onClick={() => setExpandedId(isExpanded ? null : enquiry.id)}
-                >
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <p className="font-medium text-sm">{enquiry.name}</p>
-                        <Badge variant={enquiryStatusBadgeVariant(enquiry.status)} className="text-xs">
-                          {enquiry.status}
-                        </Badge>
-                        {enquiry.sourcePage && (
-                          <Badge variant="secondary" className="text-xs">{enquiry.sourcePage}</Badge>
+        <Card>
+          <CardContent className="p-0">
+            <table className="w-full">
+              <tbody>
+                {filtered.map((enquiry) => (
+                  <tr
+                    key={enquiry.id}
+                    className="border-t first:border-t-0 hover:bg-muted/30 transition-colors cursor-pointer"
+                    onClick={() => onOpen(enquiry)}
+                  >
+                    <td className="p-3">
+                      <div className="flex items-center gap-2">
+                        {enquiry.status === "new" && (
+                          <span className="h-2 w-2 rounded-full bg-red-500 shrink-0" title="New" />
                         )}
+                        <p className="font-medium text-sm">{enquiry.name}</p>
                       </div>
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        {enquiry.email} {enquiry.phone ? `• ${enquiry.phone}` : "• no phone given"}
-                      </p>
-                      <p className={cn("text-sm text-muted-foreground mt-1", !isExpanded && "truncate")}>
-                        {enquiry.projectDescription}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2 shrink-0" onClick={(e) => e.stopPropagation()}>
-                      <span className="text-xs text-muted-foreground whitespace-nowrap" title={formatDate(enquiry.createdAt)}>
-                        {getRelativeTime(enquiry.createdAt)}
-                      </span>
-                      {enquiry.status !== "contacted" && enquiry.status !== "converted" && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 px-2"
-                          title="Mark contacted"
-                          onClick={() => setStatus(enquiry, "contacted")}
-                          disabled={updateStatusMutation.isPending}
-                        >
-                          <MailCheck className="h-3.5 w-3.5" />
-                        </Button>
-                      )}
-                      {enquiry.status !== "archived" && enquiry.status !== "converted" && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 px-2"
-                          title="Archive"
-                          onClick={() => setStatus(enquiry, "archived")}
-                          disabled={updateStatusMutation.isPending}
-                        >
-                          <Archive className="h-3.5 w-3.5" />
-                        </Button>
-                      )}
-                      {enquiry.status !== "converted" && (
-                        <Button
-                          size="sm"
-                          className="h-7"
-                          onClick={() => onConvert(enquiry)}
-                        >
-                          <ArrowRight className="h-3.5 w-3.5 mr-1" />
-                          Convert to Lead
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
+                    </td>
+                    <td className="p-3 w-32">
+                      <Badge variant={enquiryStatusBadgeVariant(enquiry.status)} className="text-xs">
+                        {enquiry.status}
+                      </Badge>
+                    </td>
+                    <td className="p-3 w-32 text-right text-xs text-muted-foreground" title={formatDate(enquiry.createdAt)}>
+                      {getRelativeTime(enquiry.createdAt)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </CardContent>
+        </Card>
       )}
+    </div>
+  );
+}
+
+// Full-screen detail view for one website enquiry — same "click a row,
+// swap the whole tab content, Back button returns" mechanism LeadDetailView
+// already uses elsewhere in this module, not a modal.
+function EnquiryDetailView({
+  enquiry,
+  onBack,
+  onConvert,
+}: {
+  enquiry: SparksEnquiry;
+  onBack: () => void;
+  onConvert: () => void;
+}) {
+  const updateStatusMutation = useUpdateSparksEnquiryStatus();
+
+  const setStatus = async (status: string) => {
+    try {
+      await updateStatusMutation.mutateAsync({ id: enquiry.id, status });
+      toast.success("Status updated");
+    } catch {
+      toast.error("Failed to update status");
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-start gap-4">
+        <Button variant="ghost" size="icon" onClick={onBack}>
+          <ArrowLeft className="h-5 w-5" />
+        </Button>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2 flex-wrap">
+            <h1 className="text-2xl font-bold truncate">{enquiry.name}</h1>
+            <Badge variant={enquiryStatusBadgeVariant(enquiry.status)}>{enquiry.status}</Badge>
+          </div>
+          <p className="text-muted-foreground mt-1">
+            Submitted {formatDate(enquiry.createdAt)} ({getRelativeTime(enquiry.createdAt)})
+            {enquiry.sourcePage ? ` via ${enquiry.sourcePage}` : ""}
+          </p>
+        </div>
+        <div className="flex gap-2 shrink-0">
+          {enquiry.status !== "archived" && enquiry.status !== "converted" && (
+            <Button
+              variant="outline"
+              onClick={() => setStatus("archived")}
+              disabled={updateStatusMutation.isPending}
+            >
+              <Archive className="h-4 w-4 mr-2" />
+              Archive
+            </Button>
+          )}
+          {enquiry.status !== "converted" && (
+            <Button onClick={onConvert}>
+              <ArrowRight className="h-4 w-4 mr-2" />
+              Convert to Lead
+            </Button>
+          )}
+        </div>
+      </div>
+
+      <Card>
+        <CardContent className="p-6 space-y-4">
+          <h3 className="font-medium">Contact Details</h3>
+          <div className="grid grid-cols-2 gap-4 text-sm">
+            <div>
+              <p className="text-muted-foreground">Email</p>
+              <p className="font-medium">{enquiry.email}</p>
+            </div>
+            <div>
+              <p className="text-muted-foreground">Phone</p>
+              <p className="font-medium">{enquiry.phone || "Not provided"}</p>
+            </div>
+            {enquiry.topic && (
+              <div className="col-span-2">
+                <p className="text-muted-foreground">Topic</p>
+                <p className="font-medium">{enquiry.topic}</p>
+              </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent className="p-6 space-y-2">
+          <h3 className="font-medium">Project Description</h3>
+          <p className="text-sm text-muted-foreground whitespace-pre-wrap">{enquiry.projectDescription}</p>
+        </CardContent>
+      </Card>
     </div>
   );
 }
