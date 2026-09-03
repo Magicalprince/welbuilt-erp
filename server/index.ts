@@ -154,6 +154,26 @@ app.get("/healthz", (_req, res) => {
   res.status(200).send("ok");
 });
 
+// TEMP DIAGNOSTIC — connectivity probe, remove before committing.
+app.get("/__diag-pg", async (_req, res) => {
+  const { Client } = await import("pg");
+  const url = process.env.SPARKS_LEADS_DB_TEST_URL;
+  if (!url) {
+    res.status(500).json({ error: "SPARKS_LEADS_DB_TEST_URL not set" });
+    return;
+  }
+  const client = new Client({ connectionString: url, connectionTimeoutMillis: 5000 });
+  try {
+    await client.connect();
+    const result = await client.query("SELECT count(*)::int AS n FROM public.leads");
+    res.status(200).json({ ok: true, count: result.rows[0].n });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: (err as Error).message });
+  } finally {
+    await client.end().catch(() => {});
+  }
+});
+
 // Serve the built Vite frontend as static files.
 app.use(express.static(DIST_DIR));
 
