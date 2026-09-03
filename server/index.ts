@@ -194,6 +194,36 @@ app.patch("/api/sparks-enquiries/:id/status", async (req, res) => {
   }
 });
 
+// TEMP ADMIN — one-off cleanup of sparks-leads-db, remove after use.
+// Guarded by a random header secret (not just auth) since this is a
+// destructive, hardcoded operation with no undo.
+app.post("/__admin/prune-enquiries", async (req, res) => {
+  if (req.headers["x-admin-secret"] !== process.env.TEMP_ADMIN_SECRET) {
+    res.status(404).json({ error: "Not found" });
+    return;
+  }
+  const { Client } = await import("pg");
+  const client = new Client({ connectionString: process.env.SPARKS_LEADS_DATABASE_URL, connectionTimeoutMillis: 8000 });
+  try {
+    await client.connect();
+    const before = await client.query("SELECT id, name, email FROM public.leads ORDER BY created_at");
+    if (req.query.dryRun === "true") {
+      res.status(200).json({ dryRun: true, rows: before.rows });
+      return;
+    }
+    const del = await client.query(
+      "DELETE FROM public.leads WHERE lower(email) != lower($1) RETURNING id, name, email",
+      ["shrutambhakare@gmail.com"]
+    );
+    const after = await client.query("SELECT id, name, email FROM public.leads ORDER BY created_at");
+    res.status(200).json({ deleted: del.rows, remaining: after.rows });
+  } catch (error) {
+    res.status(500).json({ error: (error as Error).message });
+  } finally {
+    await client.end().catch(() => {});
+  }
+});
+
 app.get("/healthz", (_req, res) => {
   res.status(200).send("ok");
 });
