@@ -328,6 +328,12 @@ export async function generateInvoicePdf(
     vLine(colQtyDivX, topY, topY - headerH);
     vLine(colQtyRateDivX, topY, topY - headerH);
     vLine(colRateDivX, topY, topY - headerH);
+    // Outer left/right borders through the header row itself — without
+    // these, the table's side borders visibly break at the shaded header
+    // (they resumed only inside closeTableSection, which spans just the
+    // body rows below), leaving a gap at the top corners of the table.
+    vLine(MARGIN, topY, topY - headerH);
+    vLine(MARGIN + CONTENT_W, topY, topY - headerH);
     return topY - headerH;
   };
 
@@ -391,7 +397,10 @@ export async function generateInvoicePdf(
       height: rowH,
       draw: (rowY) => {
         page.drawText(g.label, { x: colParticularsX, y: rowY - 12, size: 9, font: regular });
-        page.drawText(g.rate, { x: colQtyX, y: rowY - 12, size: 9, font: regular });
+        // The percentage is a rate, not a quantity — belongs under the Rate
+        // column (otherwise blank for these rows), not borrowing Quantity's
+        // position the way an earlier version did.
+        drawRightAligned(g.rate, colRateRightX, rowY - 12, 9, regular);
         drawRightAligned(formatMoney(g.amount), colAmountRightX, rowY - 12, 9, regular);
       },
     });
@@ -490,7 +499,6 @@ export async function generateInvoicePdf(
   vLine(MARGIN, wordsRowTopY, wordsRowBottomY);
   vLine(MARGIN + CONTENT_W, wordsRowTopY, wordsRowBottomY);
   y = wordsRowBottomY;
-  hLine(y);
   hLine(y);
 
   // ── HSN/SAC-style GST summary table (simplified: one Taxable Value row) ──
