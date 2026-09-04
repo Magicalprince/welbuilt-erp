@@ -298,19 +298,22 @@ export async function generateInvoicePdf(
   y -= BLOCK_GAP;
 
   // ── Line items table ───────────────────────────────────────────────────
-  // Columns: Sl No. | Particulars | Quantity | Rate | Amount — five columns
-  // need four interior dividers. A "per" (unit) column used to sit between
-  // Rate and Amount, but nothing in Invoice.lineItems ever supplies a unit,
-  // so it always rendered empty — removed per explicit request, with its
-  // width folded back into Particulars.
+  // Columns: Sl No. | Particulars | Quantity | Rate | % | Amount — six
+  // columns need five interior dividers. The GST rate percentage gets its
+  // own column here rather than sharing the Rate column's cell, so a rate
+  // value and a tax percentage are never both trying to occupy the same
+  // space (they don't co-occur per row today, but a shared cell still read
+  // ambiguously — this is unambiguous regardless of which one a row has).
   const colSlDivX = MARGIN + 20;
   const colQtyDivX = MARGIN + CONTENT_W - 215;
   const colQtyRateDivX = MARGIN + CONTENT_W - 170;
-  const colRateDivX = MARGIN + CONTENT_W - 65;
+  const colRateDivX = MARGIN + CONTENT_W - 100;
+  const colRatePctDivX = MARGIN + CONTENT_W - 65;
 
   const colParticularsX = colSlDivX + 6;
   const colQtyX = colQtyDivX + 6;
   const colRateRightX = colRateDivX - 6;
+  const colRatePctRightX = colRatePctDivX - 6;
   const colAmountRightX = MARGIN + CONTENT_W - 8;
 
   const drawTableHeaderRow = (): number => {
@@ -323,11 +326,13 @@ export async function generateInvoicePdf(
     page.drawText("Particulars", { x: colParticularsX, y: topY - 13, size: 8, font: bold });
     page.drawText("Quantity", { x: colQtyX, y: topY - 13, size: 8, font: bold });
     drawRightAligned("Rate", colRateRightX, topY - 13, 8, bold);
+    drawRightAligned("%", colRatePctRightX, topY - 13, 8, bold);
     drawRightAligned("Amount", colAmountRightX, topY - 13, 8, bold);
     vLine(colSlDivX, topY, topY - headerH);
     vLine(colQtyDivX, topY, topY - headerH);
     vLine(colQtyRateDivX, topY, topY - headerH);
     vLine(colRateDivX, topY, topY - headerH);
+    vLine(colRatePctDivX, topY, topY - headerH);
     // Outer left/right borders through the header row itself — without
     // these, the table's side borders visibly break at the shaded header
     // (they resumed only inside closeTableSection, which spans just the
@@ -338,7 +343,7 @@ export async function generateInvoicePdf(
   };
 
   y = drawTableHeaderRow();
-  const tableColXs = [MARGIN, colSlDivX, colQtyDivX, colQtyRateDivX, colRateDivX, MARGIN + CONTENT_W];
+  const tableColXs = [MARGIN, colSlDivX, colQtyDivX, colQtyRateDivX, colRateDivX, colRatePctDivX, MARGIN + CONTENT_W];
 
   // The reference bills the whole compliance package as one numbered item
   // followed by unnumbered sub-lines (govt fees, then CGST/SGST as their own
@@ -397,10 +402,10 @@ export async function generateInvoicePdf(
       height: rowH,
       draw: (rowY) => {
         page.drawText(g.label, { x: colParticularsX, y: rowY - 12, size: 9, font: regular });
-        // The percentage is a rate, not a quantity — belongs under the Rate
-        // column (otherwise blank for these rows), not borrowing Quantity's
-        // position the way an earlier version did.
-        drawRightAligned(g.rate, colRateRightX, rowY - 12, 9, regular);
+        // The percentage gets its own dedicated column — it previously
+        // shared space with Rate (and before that, Quantity), which read
+        // ambiguously since neither column's header actually says "%".
+        drawRightAligned(g.rate, colRatePctRightX, rowY - 12, 9, regular);
         drawRightAligned(formatMoney(g.amount), colAmountRightX, rowY - 12, 9, regular);
       },
     });
