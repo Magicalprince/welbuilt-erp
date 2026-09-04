@@ -193,25 +193,20 @@ export async function generateInvoicePdf(
   let sellerY = y - 10;
   const sellerTextX = MARGIN + 8;
 
-  // Height-constrained to roughly the company-name line's own height, not
-  // the whole seller block — the old both-dimensions-min'd fit crushed a
-  // wide letterhead logo (500x133) into an illegible sliver (complaint #1),
-  // and a naive fix that instead sized it against the full block's height
-  // made it tall enough to overlap the address lines below it (since the
-  // logo's own footprint was never subtracted from the vertical flow).
-  // Sitting beside just the name line, sized close to that line's height,
-  // avoids both problems without needing to reserve extra vertical space.
-  const LOGO_H = 16;
-  let logoW = 0;
+  // The logo image already carries the company name/mark visually, so
+  // drawing issuer.name as text right beside it just duplicated it — user
+  // asked for the name text removed, leaving the logo alone to identify the
+  // seller. Freed from needing to sit beside a text line, the logo can be
+  // sized larger without touching the address lines below it (previous
+  // overlap bug came from over-sizing while a name line still shared its row).
+  const LOGO_H = 30;
   if (logoImg) {
     const naturalDims = logoImg.scale(1);
     const scale = LOGO_H / naturalDims.height;
-    logoW = naturalDims.width * scale;
-    page.drawImage(logoImg, { x: sellerTextX, y: sellerY - 2, width: logoW, height: LOGO_H });
+    const logoW = naturalDims.width * scale;
+    page.drawImage(logoImg, { x: sellerTextX, y: sellerY - LOGO_H + 8, width: logoW, height: LOGO_H });
   }
-  const sellerNameX = sellerTextX + (logoW ? logoW + 8 : 0);
-  page.drawText(issuer.name, { x: sellerNameX, y: sellerY, size: 11, font: bold });
-  sellerY -= 13;
+  sellerY -= LOGO_H - 2;
   issuer.addressLines.forEach((line) => {
     page.drawText(line, { x: sellerTextX, y: sellerY, size: 8, font: regular, color: COLORS.slate });
     sellerY -= 11;
@@ -248,6 +243,11 @@ export async function generateInvoicePdf(
   vLine(rightColX, outerTop, sectionBottom);
   // Label/value separator within the meta grid — spans exactly the rows drawn above.
   vLine(rightColX + metaColSplit, outerTop, metaY + metaRowH);
+  // Top edge of the very first bordered block — every other block's top
+  // line is implicitly the previous block's bottom line, but this one has
+  // no predecessor, so it needs its own explicit rule or the whole invoice
+  // starts with an unclosed table (the "top line is missing" complaint).
+  hLine(outerTop);
   hLine(sectionBottom);
   vLine(MARGIN, outerTop, sectionBottom);
   vLine(MARGIN + CONTENT_W, outerTop, sectionBottom);
@@ -298,47 +298,41 @@ export async function generateInvoicePdf(
   y -= BLOCK_GAP;
 
   // ── Line items table ───────────────────────────────────────────────────
-  // Columns: Sl No. | Particulars | Quantity | Rate | per | Amount — six
-  // columns need five interior dividers. The previous version only had
-  // four: Quantity and Rate shared one cell with no rule of their own
-  // between them (colRateDivX was actually the Rate/per boundary, not a
-  // Quantity/Rate one) — that's the specific "not properly separated"
-  // complaint. Fixed by giving Quantity its own boundary (colQtyRateDivX).
+  // Columns: Sl No. | Particulars | Quantity | Rate | Amount — five columns
+  // need four interior dividers. A "per" (unit) column used to sit between
+  // Rate and Amount, but nothing in Invoice.lineItems ever supplies a unit,
+  // so it always rendered empty — removed per explicit request, with its
+  // width folded back into Particulars.
   const colSlDivX = MARGIN + 20;
-  const colQtyDivX = MARGIN + CONTENT_W - 245;
-  const colQtyRateDivX = MARGIN + CONTENT_W - 200;
-  const colRateDivX = MARGIN + CONTENT_W - 130;
-  const colPerDivX = MARGIN + CONTENT_W - 100;
-  const colAmountDivX = MARGIN + CONTENT_W - 65;
+  const colQtyDivX = MARGIN + CONTENT_W - 215;
+  const colQtyRateDivX = MARGIN + CONTENT_W - 170;
+  const colRateDivX = MARGIN + CONTENT_W - 65;
 
   const colParticularsX = colSlDivX + 6;
   const colQtyX = colQtyDivX + 6;
   const colRateRightX = colRateDivX - 6;
-  const colPerX = colPerDivX + 6;
   const colAmountRightX = MARGIN + CONTENT_W - 8;
 
   const drawTableHeaderRow = (): number => {
     const headerH = 20;
     const topY = y;
     page.drawRectangle({ x: MARGIN, y: topY - headerH, width: CONTENT_W, height: headerH, color: COLORS.headerBg });
+    hLine(topY, MARGIN, MARGIN + CONTENT_W);
     page.drawText("Sl", { x: MARGIN + 4, y: topY - 13, size: 8, font: bold });
     page.drawText("No.", { x: MARGIN + 4, y: topY - 21, size: 6.5, font: bold });
     page.drawText("Particulars", { x: colParticularsX, y: topY - 13, size: 8, font: bold });
     page.drawText("Quantity", { x: colQtyX, y: topY - 13, size: 8, font: bold });
     drawRightAligned("Rate", colRateRightX, topY - 13, 8, bold);
-    page.drawText("per", { x: colPerX, y: topY - 13, size: 8, font: bold });
     drawRightAligned("Amount", colAmountRightX, topY - 13, 8, bold);
     vLine(colSlDivX, topY, topY - headerH);
     vLine(colQtyDivX, topY, topY - headerH);
     vLine(colQtyRateDivX, topY, topY - headerH);
     vLine(colRateDivX, topY, topY - headerH);
-    vLine(colPerDivX, topY, topY - headerH);
-    vLine(colAmountDivX, topY, topY - headerH);
     return topY - headerH;
   };
 
   y = drawTableHeaderRow();
-  const tableColXs = [MARGIN, colSlDivX, colQtyDivX, colQtyRateDivX, colRateDivX, colPerDivX, colAmountDivX, MARGIN + CONTENT_W];
+  const tableColXs = [MARGIN, colSlDivX, colQtyDivX, colQtyRateDivX, colRateDivX, MARGIN + CONTENT_W];
 
   // The reference bills the whole compliance package as one numbered item
   // followed by unnumbered sub-lines (govt fees, then CGST/SGST as their own
@@ -397,7 +391,7 @@ export async function generateInvoicePdf(
       height: rowH,
       draw: (rowY) => {
         page.drawText(g.label, { x: colParticularsX, y: rowY - 12, size: 9, font: regular });
-        page.drawText(g.rate, { x: colRateRightX + 4, y: rowY - 12, size: 9, font: regular });
+        page.drawText(g.rate, { x: colQtyX, y: rowY - 12, size: 9, font: regular });
         drawRightAligned(formatMoney(g.amount), colAmountRightX, rowY - 12, 9, regular);
       },
     });
@@ -524,16 +518,22 @@ export async function generateInvoicePdf(
     y -= summaryHeaderH;
     hLine(y, MARGIN, MARGIN + CONTENT_W);
 
+    // Rate % is left-aligned with a small inset from its cell's own left
+    // divider, not centered on the whole rate+amount cell — centering put
+    // it visually close to the divider anyway once the amount's own
+    // right-aligned width was accounted for, reading as if it were crowding
+    // the border line.
+    const pctInset = 6;
     const dataRowH = 15;
     const taxAmount = (invoice.cgstAmount ?? 0) + (invoice.sgstAmount ?? 0) + (invoice.igstAmount ?? 0);
     drawRightAligned(formatMoney(invoice.subtotal), colTaxable, y - 11, 8.5, regular);
     if (invoice.gstType === "CGST_SGST") {
-      drawCentered(`${invoice.cgstPercent ?? 0}%`, colCgstRate, y - 11, 8.5, regular);
+      page.drawText(`${invoice.cgstPercent ?? 0}%`, { x: colTaxable + 4 + pctInset, y: y - 11, size: 8.5, font: regular });
       drawRightAligned(formatMoney(invoice.cgstAmount ?? 0), colCgstAmt, y - 11, 8.5, regular);
-      drawCentered(`${invoice.sgstPercent ?? 0}%`, colSgstRate, y - 11, 8.5, regular);
+      page.drawText(`${invoice.sgstPercent ?? 0}%`, { x: colCgstAmt + 4 + pctInset, y: y - 11, size: 8.5, font: regular });
       drawRightAligned(formatMoney(invoice.sgstAmount ?? 0), colSgstAmt, y - 11, 8.5, regular);
     } else {
-      drawCentered(`${invoice.igstPercent ?? 0}%`, colCgstRate, y - 11, 8.5, regular);
+      page.drawText(`${invoice.igstPercent ?? 0}%`, { x: colTaxable + 4 + pctInset, y: y - 11, size: 8.5, font: regular });
       drawRightAligned(formatMoney(invoice.igstAmount ?? 0), colCgstAmt, y - 11, 8.5, regular);
     }
     drawRightAligned(formatMoney(taxAmount), colTotalTax - 8, y - 11, 8.5, regular);
