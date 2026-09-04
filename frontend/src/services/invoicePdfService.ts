@@ -19,6 +19,11 @@ interface Issuer {
   name: string;
   addressLines: string[];
   logoPath: string;
+  // No dedicated WelBuilt signature asset exists yet — undefined degrades
+  // to just the seal, which is still a real improvement over no signature
+  // image at all (the previous state for both issuers).
+  signaturePath?: string;
+  sealPath?: string;
   gstin: string;
   stateName: string;
   stateCode: string;
@@ -32,6 +37,8 @@ const ISSUERS: Record<"welbuilt" | "sparks", Issuer> = {
       "Tiruvannamalai, Tamil Nadu - 606601",
     ],
     logoPath: "/images/sparks/logo.png",
+    signaturePath: "/images/sparks/signature.png",
+    sealPath: "/images/sparks/seal.png",
     gstin: "",
     stateName: "Tamil Nadu",
     stateCode: "33",
@@ -43,6 +50,7 @@ const ISSUERS: Record<"welbuilt" | "sparks", Issuer> = {
       "Tiruvannamalai, Tamil Nadu - 606601",
     ],
     logoPath: "/images/logo-full.png",
+    sealPath: "/images/seal.png",
     gstin: "",
     stateName: "Tamil Nadu",
     stateCode: "33",
@@ -133,8 +141,14 @@ export async function generateInvoicePdf(
     /* fall back to Helvetica already assigned above */
   }
 
-  const logoBytes = await fetchBytes(issuer.logoPath);
+  const [logoBytes, signatureBytes, sealBytes] = await Promise.all([
+    fetchBytes(issuer.logoPath),
+    issuer.signaturePath ? fetchBytes(issuer.signaturePath) : Promise.resolve(null),
+    issuer.sealPath ? fetchBytes(issuer.sealPath) : Promise.resolve(null),
+  ]);
   const logoImg = logoBytes ? await pdfDoc.embedPng(logoBytes).catch(() => null) : null;
+  const signatureImg = signatureBytes ? await pdfDoc.embedPng(signatureBytes).catch(() => null) : null;
+  const sealImg = sealBytes ? await pdfDoc.embedPng(sealBytes).catch(() => null) : null;
 
   let page = pdfDoc.addPage([PAGE_W, PAGE_H]);
   let y = PAGE_H - MARGIN;
@@ -163,8 +177,11 @@ export async function generateInvoicePdf(
     page.drawLine({ start: { x: xPos, y: y1 }, end: { x: xPos, y: y2 }, thickness: 0.75, color: COLORS.line });
   };
 
-  // ── "Tax Invoice" title ───────────────────────────────────────────────
-  drawCentered("Tax Invoice", PAGE_W / 2, y, 13, bold);
+  // ── Title ────────────────────────────────────────────────────────────
+  // "Invoice", not "Tax Invoice" — GST is one optional line among several
+  // billing shapes this document covers, not always present, so a title
+  // that names it specifically would be wrong on a no-GST bill.
+  drawCentered("Invoice", PAGE_W / 2, y, 13, bold);
   y -= 20;
   const outerTop = y;
 
@@ -175,13 +192,22 @@ export async function generateInvoicePdf(
 
   let sellerY = y - 10;
   const sellerTextX = MARGIN + 8;
+
+  // Height-constrained to roughly the company-name line's own height, not
+  // the whole seller block — the old both-dimensions-min'd fit crushed a
+  // wide letterhead logo (500x133) into an illegible sliver (complaint #1),
+  // and a naive fix that instead sized it against the full block's height
+  // made it tall enough to overlap the address lines below it (since the
+  // logo's own footprint was never subtracted from the vertical flow).
+  // Sitting beside just the name line, sized close to that line's height,
+  // avoids both problems without needing to reserve extra vertical space.
+  const LOGO_H = 16;
   let logoW = 0;
   if (logoImg) {
     const naturalDims = logoImg.scale(1);
-    const scale = Math.min(28 / naturalDims.width, 28 / naturalDims.height);
+    const scale = LOGO_H / naturalDims.height;
     logoW = naturalDims.width * scale;
-    const logoH = naturalDims.height * scale;
-    page.drawImage(logoImg, { x: sellerTextX, y: sellerY - logoH + 4, width: logoW, height: logoH });
+    page.drawImage(logoImg, { x: sellerTextX, y: sellerY - 2, width: logoW, height: LOGO_H });
   }
   const sellerNameX = sellerTextX + (logoW ? logoW + 8 : 0);
   page.drawText(issuer.name, { x: sellerNameX, y: sellerY, size: 11, font: bold });
@@ -264,12 +290,31 @@ export async function generateInvoicePdf(
   vLine(MARGIN + CONTENT_W, y, buyerBottom);
   y = buyerBottom;
 
+  // Visual gap between the header/addressee block and the line-items table
+  // — they read as one continuous grid without this, which was the
+  // "clumsy" complaint. No border here; the two blocks are deliberately
+  // separate tables now.
+  const BLOCK_GAP = 10;
+  y -= BLOCK_GAP;
+
   // ── Line items table ───────────────────────────────────────────────────
-  // Columns: Sl No. | Particulars | Quantity | Rate | per | Amount
-  const colParticularsX = MARGIN + 26;
-  const colQtyX = MARGIN + CONTENT_W - 175;
-  const colRateRightX = MARGIN + CONTENT_W - 115;
-  const colPerX = MARGIN + CONTENT_W - 95;
+  // Columns: Sl No. | Particulars | Quantity | Rate | per | Amount — six
+  // columns need five interior dividers. The previous version only had
+  // four: Quantity and Rate shared one cell with no rule of their own
+  // between them (colRateDivX was actually the Rate/per boundary, not a
+  // Quantity/Rate one) — that's the specific "not properly separated"
+  // complaint. Fixed by giving Quantity its own boundary (colQtyRateDivX).
+  const colSlDivX = MARGIN + 20;
+  const colQtyDivX = MARGIN + CONTENT_W - 245;
+  const colQtyRateDivX = MARGIN + CONTENT_W - 200;
+  const colRateDivX = MARGIN + CONTENT_W - 130;
+  const colPerDivX = MARGIN + CONTENT_W - 100;
+  const colAmountDivX = MARGIN + CONTENT_W - 65;
+
+  const colParticularsX = colSlDivX + 6;
+  const colQtyX = colQtyDivX + 6;
+  const colRateRightX = colRateDivX - 6;
+  const colPerX = colPerDivX + 6;
   const colAmountRightX = MARGIN + CONTENT_W - 8;
 
   const drawTableHeaderRow = (): number => {
@@ -283,15 +328,17 @@ export async function generateInvoicePdf(
     drawRightAligned("Rate", colRateRightX, topY - 13, 8, bold);
     page.drawText("per", { x: colPerX, y: topY - 13, size: 8, font: bold });
     drawRightAligned("Amount", colAmountRightX, topY - 13, 8, bold);
-    vLine(MARGIN + 20, topY, topY - headerH);
-    vLine(colQtyX - 6, topY, topY - headerH);
-    vLine(colPerX - 6, topY, topY - headerH);
-    vLine(MARGIN + CONTENT_W - 60, topY, topY - headerH);
+    vLine(colSlDivX, topY, topY - headerH);
+    vLine(colQtyDivX, topY, topY - headerH);
+    vLine(colQtyRateDivX, topY, topY - headerH);
+    vLine(colRateDivX, topY, topY - headerH);
+    vLine(colPerDivX, topY, topY - headerH);
+    vLine(colAmountDivX, topY, topY - headerH);
     return topY - headerH;
   };
 
   y = drawTableHeaderRow();
-  const tableColXs = [MARGIN, MARGIN + 20, colQtyX - 6, colPerX - 6, MARGIN + CONTENT_W - 60, MARGIN + CONTENT_W];
+  const tableColXs = [MARGIN, colSlDivX, colQtyDivX, colQtyRateDivX, colRateDivX, colPerDivX, colAmountDivX, MARGIN + CONTENT_W];
 
   // The reference bills the whole compliance package as one numbered item
   // followed by unnumbered sub-lines (govt fees, then CGST/SGST as their own
@@ -302,13 +349,13 @@ export async function generateInvoicePdf(
   // each get numbered normally.
   const rowH = 15;
   const minTableBodyH = 220; // keeps the table roughly the reference's height even with few rows
+  const totalRowH = 22;
 
   const descMaxWidth = colQtyX - 6 - colParticularsX - 6;
   const measuredRows = invoice.lineItems.map((item) => {
     const lines = wrapText(item.description, regular, 9, descMaxWidth);
     return { item, lines, height: Math.max(rowH, lines.length * 11 + 4) };
   });
-  let bodyHeight = measuredRows.reduce((sum, r) => sum + r.height, 0);
 
   // GST rows, drawn as additional unnumbered particulars inside the same
   // block. Gated on an actual non-zero rate, not just gstType !== "NONE" —
@@ -323,70 +370,115 @@ export async function generateInvoicePdf(
   } else if (invoice.gstType === "IGST" && (invoice.igstPercent ?? 0) > 0) {
     gstRows.push({ label: "Output IGST", rate: `${invoice.igstPercent ?? 0}%`, amount: invoice.igstAmount ?? 0 });
   }
-  bodyHeight += gstRows.length * rowH;
-  if (invoice.discount > 0) bodyHeight += rowH;
 
-  const filledBodyH = Math.max(minTableBodyH, bodyHeight + 20);
-
-  // Rare in practice (this format's invoices are typically a handful of
-  // line items), but a very long description list or many GST rows could
-  // still overflow — start a fresh page rather than draw past the margin.
-  const footerReserve = 140; // amount-in-words + GST summary + bank/signature + footer
-  if (y - filledBodyH - 18 < footerReserve) {
-    newPage();
-    y = drawTableHeaderRow();
-  }
-  const tableTop = y;
-
-  let rowY = tableTop;
-  measuredRows.forEach(({ item, lines }, idx) => {
-    const thisRowH = Math.max(rowH, lines.length * 11 + 4);
-    if (idx === 0) {
-      page.drawText("1", { x: MARGIN + 6, y: rowY - 12, size: 9, font: regular });
-    }
-    lines.forEach((line, li) => {
-      page.drawText(line, { x: colParticularsX, y: rowY - 12 - li * 11, size: 9, font: li === 0 ? bold : regular });
-    });
-    if (item.quantity > 1 || item.rate > 0) {
-      page.drawText(String(item.quantity), { x: colQtyX, y: rowY - 12, size: 9, font: regular });
-      drawRightAligned(formatMoney(item.rate), colRateRightX, rowY - 12, 9, regular);
-    }
-    drawRightAligned(formatMoney(item.amount), colAmountRightX, rowY - 12, 9, regular);
-    rowY -= thisRowH;
-  });
-
+  // Every drawable row in the table body, in order — line items, then GST,
+  // then discount. Building one flat list lets the pagination loop below
+  // page-break at any row boundary without special-casing which kind of
+  // row it is.
+  type BodyRow = { draw: (rowY: number) => void; height: number };
+  const bodyRows: BodyRow[] = measuredRows.map(({ item, lines }, idx) => ({
+    height: Math.max(rowH, lines.length * 11 + 4),
+    draw: (rowY) => {
+      if (idx === 0) {
+        page.drawText("1", { x: MARGIN + 6, y: rowY - 12, size: 9, font: regular });
+      }
+      lines.forEach((line, li) => {
+        page.drawText(line, { x: colParticularsX, y: rowY - 12 - li * 11, size: 9, font: li === 0 ? bold : regular });
+      });
+      if (item.quantity > 1 || item.rate > 0) {
+        page.drawText(String(item.quantity), { x: colQtyX, y: rowY - 12, size: 9, font: regular });
+        drawRightAligned(formatMoney(item.rate), colRateRightX, rowY - 12, 9, regular);
+      }
+      drawRightAligned(formatMoney(item.amount), colAmountRightX, rowY - 12, 9, regular);
+    },
+  }));
   for (const g of gstRows) {
-    page.drawText(g.label, { x: colParticularsX, y: rowY - 12, size: 9, font: regular });
-    page.drawText(g.rate, { x: colRateRightX + 4, y: rowY - 12, size: 9, font: regular });
-    drawRightAligned(formatMoney(g.amount), colAmountRightX, rowY - 12, 9, regular);
-    rowY -= rowH;
+    bodyRows.push({
+      height: rowH,
+      draw: (rowY) => {
+        page.drawText(g.label, { x: colParticularsX, y: rowY - 12, size: 9, font: regular });
+        page.drawText(g.rate, { x: colRateRightX + 4, y: rowY - 12, size: 9, font: regular });
+        drawRightAligned(formatMoney(g.amount), colAmountRightX, rowY - 12, 9, regular);
+      },
+    });
   }
-
   if (invoice.discount > 0) {
-    page.drawText("Discount", { x: colParticularsX, y: rowY - 12, size: 9, font: regular });
-    drawRightAligned(`(-) ${formatMoney(invoice.discount)}`, colAmountRightX, rowY - 12, 9, regular);
-    rowY -= rowH;
+    bodyRows.push({
+      height: rowH,
+      draw: (rowY) => {
+        page.drawText("Discount", { x: colParticularsX, y: rowY - 12, size: 9, font: regular });
+        drawRightAligned(`(-) ${formatMoney(invoice.discount)}`, colAmountRightX, rowY - 12, 9, regular);
+      },
+    });
   }
 
-  const tableBottom = tableTop - filledBodyH;
+  const contentRowsH = bodyRows.reduce((sum, r) => sum + r.height, 0);
 
-  // Column rules for the full body height, then the Total row. PDF's y-axis
-  // increases upward, so a row spanning [rowBottomY, rowTopY] must keep its
-  // text baseline BELOW rowTopY by less than the row's own height, i.e.
-  // baseline = rowTopY - offset with offset < rowHeight. Getting this
-  // backwards (text placed at a coordinate outside the row it's meant to be
+  // Draws the column-divider rules for one page's worth of table body,
+  // [sectionTopY, sectionBottomY], then the horizontal rule closing it off.
+  const closeTableSection = (sectionTopY: number, sectionBottomY: number) => {
+    for (let i = 1; i < tableColXs.length - 1; i++) {
+      vLine(tableColXs[i], sectionTopY, sectionBottomY);
+    }
+    vLine(MARGIN, sectionTopY, sectionBottomY);
+    vLine(MARGIN + CONTENT_W, sectionTopY, sectionBottomY);
+    hLine(sectionBottomY, MARGIN, MARGIN + CONTENT_W);
+  };
+
+  // Reserve space below the table for whatever always follows it on the
+  // same page. A row that isn't the table's last only needs to fit itself
+  // plus headroom for one more row (so a page never ends with zero rows
+  // drawn); the LAST row additionally needs the Total row plus enough for
+  // Amount-Chargeable and the start of the signature block to not be
+  // forced onto yet another page by themselves — GST summary/bank details
+  // can still spill to a following page on their own if genuinely needed,
+  // but the common case (no GST table, short bank details) should land
+  // fully on the same page as the last line item.
+  const footerReserve = 140; // Total row + Amount-Chargeable + start of signature block
+  const minUsableY = MARGIN + 40;
+
+  let tableTop = y;
+  let rowY = tableTop;
+  let rowsDrawnOnThisPage = 0;
+
+  for (let i = 0; i < bodyRows.length; i++) {
+    const row = bodyRows[i];
+    const isLastRow = i === bodyRows.length - 1;
+    const trailingReserve = isLastRow ? footerReserve : rowH;
+    if (rowY - row.height - trailingReserve < minUsableY && rowsDrawnOnThisPage > 0) {
+      // This row doesn't fit — close out the current page's table section
+      // and continue on a fresh page with a repeated header.
+      closeTableSection(tableTop, rowY);
+      drawCentered("(Continued on next page)", PAGE_W / 2, rowY - 12, 7.5, regular, COLORS.slate);
+      newPage();
+      y = drawTableHeaderRow();
+      tableTop = y;
+      rowY = tableTop;
+      rowsDrawnOnThisPage = 0;
+    }
+    row.draw(rowY);
+    rowY -= row.height;
+    rowsDrawnOnThisPage++;
+  }
+
+  // Pad the last page's table out to its usual minimum look when the
+  // content is short (a single line item shouldn't produce a tiny table),
+  // but never past what's actually left on the page.
+  const remainingOnPage = rowY - minUsableY;
+  const padding = Math.max(0, Math.min(minTableBodyH - contentRowsH, remainingOnPage));
+  const tableBottom = rowY - Math.max(0, padding);
+
+  // Column rules for this page's table body, then the Total row. PDF's
+  // y-axis increases upward, so a row spanning [rowBottomY, rowTopY] must
+  // keep its text baseline BELOW rowTopY by less than the row's own
+  // height, i.e. baseline = rowTopY - offset with offset < rowHeight.
+  // Getting this backwards (text placed outside the row it's meant to be
   // in) is exactly what produced the Total/Amount-Chargeable overlap here
   // originally — confirmed by direct baseline-coordinate logging, not just
   // eyeballing the render.
   const totalRowTopY = tableBottom;
-  const totalRowH = 22;
   const totalRowBottomY = totalRowTopY - totalRowH;
-  for (let i = 1; i < tableColXs.length - 1; i++) {
-    vLine(tableColXs[i], tableTop, totalRowBottomY);
-  }
-  vLine(MARGIN, tableTop, totalRowBottomY);
-  vLine(MARGIN + CONTENT_W, tableTop, totalRowBottomY);
-  hLine(totalRowBottomY, MARGIN, MARGIN + CONTENT_W);
+  closeTableSection(tableTop, totalRowBottomY);
 
   page.drawText("Total", { x: colQtyX - 40, y: totalRowTopY - 14, size: 9.5, font: bold });
   drawRightAligned(formatMoney(invoice.total), colAmountRightX, totalRowTopY - 14, 10, bold);
@@ -482,10 +574,13 @@ export async function generateInvoicePdf(
   const bd = companySettings.bankDetails;
   const hasBankDetails = bd && (nonEmpty(bd.accountHolderName) || nonEmpty(bd.bankName) || nonEmpty(bd.accountNumber) || nonEmpty(bd.ifscCode));
 
-  // The signature block (2 lines, ~34pt) always needs room regardless of
-  // whether bank details render — this is what previously overlapped when
-  // there were no bank details to pad the block out.
-  const minSignatureBlockH = 50;
+  // The signature block ("for X" / signature image / "Authorised
+  // Signatory") always needs room regardless of whether bank details
+  // render — this is what previously overlapped when there were no bank
+  // details to pad the block out, and separately had no actual signature
+  // image at all.
+  const SIGNATURE_IMG_H = 34;
+  const minSignatureBlockH = 20 + SIGNATURE_IMG_H + 16; // "for X" + image + "Authorised Signatory"
   const bankContentH = hasBankDetails ? 24 + 44 : 0; // heading + up to 4 lines @ 11pt
   const bankBlockH = Math.max(minSignatureBlockH, bankContentH);
   const bankTop = y;
@@ -506,7 +601,36 @@ export async function generateInvoicePdf(
 
   const sigLabel = `for ${issuer.name}`;
   drawRightAligned(sigLabel, MARGIN + CONTENT_W - 8, bankTop - 14, 8.5, bold);
-  drawRightAligned("Authorised Signatory", MARGIN + CONTENT_W - 8, bankTop - bankBlockH + 10, 8, regular, COLORS.slate);
+
+  // Seal sits behind/left of the signature, signature on top — same layered
+  // convention sparksOfferLetterService.ts already uses elsewhere in this app.
+  const sigBlockRightX = MARGIN + CONTENT_W - 8;
+  const sigImgTopY = bankTop - 18;
+  if (sealImg) {
+    const naturalDims = sealImg.scale(1);
+    const scale = SIGNATURE_IMG_H / naturalDims.height;
+    const w = naturalDims.width * scale;
+    page.drawImage(sealImg, {
+      x: sigBlockRightX - w - 40,
+      y: sigImgTopY - SIGNATURE_IMG_H,
+      width: w,
+      height: SIGNATURE_IMG_H,
+      opacity: 0.85,
+    });
+  }
+  if (signatureImg) {
+    const naturalDims = signatureImg.scale(1);
+    const scale = SIGNATURE_IMG_H / naturalDims.height;
+    const w = naturalDims.width * scale;
+    page.drawImage(signatureImg, {
+      x: sigBlockRightX - w,
+      y: sigImgTopY - SIGNATURE_IMG_H,
+      width: w,
+      height: SIGNATURE_IMG_H,
+    });
+  }
+
+  drawRightAligned("Authorised Signatory", sigBlockRightX, bankTop - bankBlockH + 10, 8, regular, COLORS.slate);
 
   y -= bankBlockH;
   vLine(MARGIN, bankTop, y);
