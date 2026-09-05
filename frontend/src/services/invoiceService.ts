@@ -194,10 +194,35 @@ export async function createInvoice(
   return invoiceRef.id;
 }
 
-// Update invoice
+// Update invoice. GST percent/amount fields additionally accept `null` (on
+// top of Invoice's own `number | undefined`) so a caller can explicitly
+// clear them when the invoice's GST type changes to one that no longer uses
+// them — `undefined` fields get stripped by updateDocument() before reaching
+// Firestore and wouldn't clear anything, only `null` actually does.
 export async function updateInvoice(
   invoiceId: string,
-  data: Partial<Omit<Invoice, "id" | "createdAt" | "updatedAt" | "payments">>
+  data: Partial<
+    Omit<
+      Invoice,
+      | "id"
+      | "createdAt"
+      | "updatedAt"
+      | "payments"
+      | "cgstPercent"
+      | "sgstPercent"
+      | "igstPercent"
+      | "cgstAmount"
+      | "sgstAmount"
+      | "igstAmount"
+    >
+  > & {
+    cgstPercent?: number | null;
+    sgstPercent?: number | null;
+    igstPercent?: number | null;
+    cgstAmount?: number | null;
+    sgstAmount?: number | null;
+    igstAmount?: number | null;
+  }
 ): Promise<void> {
   const updateData: Record<string, unknown> = { ...data };
   if (data.issueDate) updateData.issueDate = Timestamp.fromDate(data.issueDate);

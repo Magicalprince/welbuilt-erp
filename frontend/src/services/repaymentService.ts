@@ -4,6 +4,7 @@ import {
   getDocument,
   getDocuments,
   createDocument,
+  updateDocument,
   deleteDocument,
   orderBy,
   where,
@@ -114,6 +115,16 @@ export async function createRepayment(
   });
 
   return repaymentId;
+}
+
+// Update repayment
+export async function updateRepayment(
+  repaymentId: string,
+  data: Partial<Pick<Repayment, "amount" | "date" | "notes">>
+): Promise<void> {
+  const updateData: Record<string, unknown> = { ...data };
+  if (data.date) updateData.date = Timestamp.fromDate(data.date);
+  await updateDocument(COLLECTIONS.REPAYMENTS, repaymentId, updateData);
 }
 
 // Delete repayment

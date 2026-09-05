@@ -199,6 +199,11 @@ export interface Withdrawal {
   approvedBy?: string;
   notes?: string;
   createdAt: Date;
+  // Links to the FOUNDER_WITHDRAWAL-category Expense record created
+  // alongside this withdrawal, so editing/deleting the withdrawal can keep
+  // that expense in sync instead of leaving it orphaned. Withdrawals
+  // created before this field existed will not have it.
+  expenseId?: string;
 }
 
 // Repayment Types — a founder paying back part of their withdrawn amount
@@ -320,25 +325,6 @@ export interface FinancialSummary {
   thisMonthRevenue: number;
 }
 
-// Communication Types
-export type CommunicationType = "EMAIL" | "CALL" | "MEETING" | "MESSAGE";
-
-export interface Communication {
-  id: string;
-  type: CommunicationType;
-  subject: string;
-  content?: string;
-  clientId?: string;
-  projectId?: string;
-  participants: string[];
-  date: Date;
-  duration?: number;
-  outcome?: string;
-  followUpDate?: Date;
-  attachments?: string[];
-  createdBy: string;
-  createdAt: Date;
-}
 
 // Intern Types
 export type InternPaymentStatus = "PAID" | "UNPAID";

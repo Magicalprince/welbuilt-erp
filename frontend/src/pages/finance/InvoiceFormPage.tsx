@@ -1,5 +1,5 @@
-import { useState, useMemo } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useState, useMemo, useEffect } from "react";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { ArrowLeft, Plus, Trash2, Calendar, Loader2 } from "lucide-react";
 import {
   Button,
@@ -12,7 +12,7 @@ import {
   Select,
   Textarea,
 } from "@/components/ui";
-import { useClients, useProjects, useCreateInvoice } from "@/hooks/useFirestore";
+import { useClients, useProjects, useCreateInvoice, useUpdateInvoice, useInvoice } from "@/hooks/useFirestore";
 import { formatCurrency } from "@/lib/utils";
 import toast from "react-hot-toast";
 import type { GSTType } from "@/types";
@@ -48,12 +48,16 @@ const GST_RATE_OPTIONS = [
 
 export default function InvoiceFormPage() {
   const navigate = useNavigate();
+  const { id } = useParams<{ id: string }>();
+  const isEditMode = !!id;
   const [searchParams] = useSearchParams();
   const preselectedClientId = searchParams.get("clientId") || "";
 
   const { data: clients, isLoading: loadingClients } = useClients();
   const { data: allProjects } = useProjects();
+  const { data: existingInvoice, isLoading: loadingInvoice } = useInvoice(id || "");
   const createInvoiceMutation = useCreateInvoice();
+  const updateInvoiceMutation = useUpdateInvoice();
 
   // Form state
   const [clientId, setClientId] = useState(preselectedClientId);
@@ -80,6 +84,40 @@ export default function InvoiceFormPage() {
   // Payment phases
   const [paymentPhases, setPaymentPhases] = useState<PaymentPhase[]>([]);
   const [usePaymentSchedule, setUsePaymentSchedule] = useState(false);
+
+  // Prefill the form once the invoice being edited has loaded. Keyed on the
+  // invoice's own id (not just isEditMode) so this only re-runs when a
+  // genuinely different invoice loads, not on every re-render.
+  useEffect(() => {
+    if (!existingInvoice) return;
+    setClientId(existingInvoice.clientId);
+    setProjectId(existingInvoice.projectId || "");
+    setIssueDate(new Date(existingInvoice.issueDate).toISOString().split("T")[0]);
+    setDueDate(new Date(existingInvoice.dueDate).toISOString().split("T")[0]);
+    setGstType(existingInvoice.gstType || "NONE");
+    setGstRate(
+      existingInvoice.gstType === "IGST"
+        ? existingInvoice.igstPercent || 18
+        : (existingInvoice.cgstPercent || 0) + (existingInvoice.sgstPercent || 0) || 18
+    );
+    setDiscount(existingInvoice.discount || 0);
+    setNotes(existingInvoice.notes || "");
+    setLineItems(
+      existingInvoice.lineItems.map((item) => ({
+        id: item.id || crypto.randomUUID(),
+        description: item.description,
+        quantity: item.quantity,
+        rate: item.rate,
+        amount: item.amount,
+      }))
+    );
+    // Payment schedule is intentionally not editable here — it's a separate
+    // sub-collection with its own PAID/PENDING status per phase (recorded via
+    // "Mark as Paid" on the detail page), and updateInvoice() doesn't touch
+    // it at all. Regenerating it from this form on every edit would silently
+    // wipe out which phases are already paid.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [existingInvoice?.id]);
 
   // Filter projects by selected client
   const clientProjects = useMemo(() => {
@@ -179,24 +217,14 @@ export default function InvoiceFormPage() {
     }
 
     try {
-      const invoiceData = {
-        clientId,
-        projectId: projectId || undefined,
-        issueDate: new Date(issueDate),
-        dueDate: new Date(dueDate),
-        lineItems: lineItems.map((item) => ({
-          id: item.id,
-          description: item.description,
-          quantity: item.quantity,
-          rate: item.rate,
-          amount: item.amount,
-        })),
-        subtotal,
-        tax: taxAmount,
-        discount,
-        total,
-        status: "PENDING" as const,
-        notes: notes || undefined,
+      const lineItemsData = lineItems.map((item) => ({
+        id: item.id,
+        description: item.description,
+        quantity: item.quantity,
+        rate: item.rate,
+        amount: item.amount,
+      }));
+      const gstFields = {
         gstType,
         ...(gstType === "CGST_SGST" && {
           cgstPercent,
@@ -208,6 +236,61 @@ export default function InvoiceFormPage() {
           igstPercent,
           igstAmount,
         }),
+      };
+
+      if (isEditMode && id) {
+        // Explicitly null out whichever GST fields no longer apply — e.g.
+        // switching CGST_SGST -> NONE would otherwise leave the old
+        // cgstPercent/cgstAmount sitting stale on the document (gated out of
+        // display by gstType, but still incorrect stored data).
+        const gstClearFields = {
+          ...(gstType !== "CGST_SGST" && {
+            cgstPercent: null,
+            sgstPercent: null,
+            cgstAmount: null,
+            sgstAmount: null,
+          }),
+          ...(gstType !== "IGST" && {
+            igstPercent: null,
+            igstAmount: null,
+          }),
+        };
+
+        await updateInvoiceMutation.mutateAsync({
+          invoiceId: id,
+          data: {
+            clientId,
+            projectId: projectId || undefined,
+            issueDate: new Date(issueDate),
+            dueDate: new Date(dueDate),
+            lineItems: lineItemsData,
+            subtotal,
+            tax: taxAmount,
+            discount,
+            total,
+            notes: notes || undefined,
+            ...gstFields,
+            ...gstClearFields,
+          },
+        });
+        toast.success("Invoice updated successfully!");
+        navigate(`/finance/invoices/${id}`);
+        return;
+      }
+
+      const invoiceData = {
+        clientId,
+        projectId: projectId || undefined,
+        issueDate: new Date(issueDate),
+        dueDate: new Date(dueDate),
+        lineItems: lineItemsData,
+        subtotal,
+        tax: taxAmount,
+        discount,
+        total,
+        status: "PENDING" as const,
+        notes: notes || undefined,
+        ...gstFields,
       };
 
       const paymentSchedule = usePaymentSchedule
@@ -222,12 +305,12 @@ export default function InvoiceFormPage() {
       toast.success("Invoice created successfully!");
       navigate("/finance/invoices");
     } catch (error) {
-      console.error("Failed to create invoice:", error);
-      toast.error("Failed to create invoice");
+      console.error(`Failed to ${isEditMode ? "update" : "create"} invoice:`, error);
+      toast.error(`Failed to ${isEditMode ? "update" : "create"} invoice`);
     }
   };
 
-  if (loadingClients) {
+  if (loadingClients || (isEditMode && loadingInvoice)) {
     return (
       <div className="flex items-center justify-center h-64">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -242,8 +325,12 @@ export default function InvoiceFormPage() {
           <ArrowLeft className="h-5 w-5" />
         </Button>
         <div>
-          <h1 className="text-3xl font-bold">Create Invoice</h1>
-          <p className="text-muted-foreground">Fill in the details to generate a new invoice</p>
+          <h1 className="text-3xl font-bold">{isEditMode ? "Edit Invoice" : "Create Invoice"}</h1>
+          <p className="text-muted-foreground">
+            {isEditMode
+              ? "Update the invoice details below"
+              : "Fill in the details to generate a new invoice"}
+          </p>
         </div>
       </div>
 
@@ -448,7 +535,11 @@ export default function InvoiceFormPage() {
           </CardContent>
         </Card>
 
-        {/* Payment Schedule */}
+        {/* Payment Schedule — create-only. Editing it here would silently
+            wipe out the PAID/PENDING status already recorded per phase on
+            the detail page, since updateInvoice() doesn't touch this
+            sub-collection at all. */}
+        {!isEditMode && (
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
             <div>
@@ -542,6 +633,7 @@ export default function InvoiceFormPage() {
             </CardContent>
           )}
         </Card>
+        )}
 
         {/* Notes */}
         <Card>
@@ -563,12 +655,17 @@ export default function InvoiceFormPage() {
           <Button type="button" variant="outline" onClick={() => navigate(-1)}>
             Cancel
           </Button>
-          <Button type="submit" disabled={!isValid || createInvoiceMutation.isPending}>
-            {createInvoiceMutation.isPending ? (
+          <Button
+            type="submit"
+            disabled={!isValid || createInvoiceMutation.isPending || updateInvoiceMutation.isPending}
+          >
+            {createInvoiceMutation.isPending || updateInvoiceMutation.isPending ? (
               <>
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                Creating...
+                {isEditMode ? "Saving..." : "Creating..."}
               </>
+            ) : isEditMode ? (
+              "Save Changes"
             ) : (
               "Create Invoice"
             )}

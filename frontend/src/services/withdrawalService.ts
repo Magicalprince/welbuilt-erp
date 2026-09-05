@@ -10,7 +10,7 @@ import {
   where,
 } from "./firestore";
 import type { Withdrawal, WithdrawalStatus } from "@/types";
-import { createExpense } from "./financeService";
+import { createExpense, updateExpense, deleteExpense } from "./financeService";
 import { getUserById } from "./userService";
 import { logWithdrawalRequested, logWithdrawalApproved } from "./activityLogService";
 
@@ -92,21 +92,16 @@ export async function getPendingWithdrawals(): Promise<Withdrawal[]> {
 
 // Create withdrawal (directly as approved/successful) and record as expense
 export async function createWithdrawal(
-  data: Omit<Withdrawal, "id" | "createdAt" | "status">
+  data: Omit<Withdrawal, "id" | "createdAt" | "status" | "expenseId">
 ): Promise<string> {
   // Get founder name for expense description
   const founder = await getUserById(data.founderId);
   const founderName = founder?.name || "Founder";
 
-  // Create the withdrawal record
-  const withdrawalId = await createDocument(COLLECTIONS.WITHDRAWALS, {
-    ...data,
-    date: Timestamp.fromDate(data.date),
-    status: "APPROVED",
-  });
-
-  // Also create an expense record for this withdrawal
-  await createExpense({
+  // Create the linked expense first so its id can be stored on the
+  // withdrawal — lets edit/delete keep both records in sync later instead
+  // of leaving the expense orphaned.
+  const expenseId = await createExpense({
     description: `Founder Withdrawal - ${founderName}`,
     amount: data.amount,
     category: "FOUNDER_WITHDRAWAL",
@@ -115,11 +110,40 @@ export async function createWithdrawal(
     notes: data.notes || `Withdrawal by ${founderName}`,
   });
 
+  const withdrawalId = await createDocument(COLLECTIONS.WITHDRAWALS, {
+    ...data,
+    date: Timestamp.fromDate(data.date),
+    status: "APPROVED",
+    expenseId,
+  });
+
   // Withdrawals are created already-approved, so log both events for the audit trail
   await logWithdrawalRequested(data.founderId, withdrawalId, data.amount);
   await logWithdrawalApproved(data.founderId, withdrawalId, data.amount, founderName);
 
   return withdrawalId;
+}
+
+// Update withdrawal — keeps the linked expense's amount/date/notes in sync
+// so editing a withdrawal doesn't desync it from the expense ledger.
+export async function updateWithdrawal(
+  withdrawalId: string,
+  data: Partial<Pick<Withdrawal, "amount" | "date" | "notes">>
+): Promise<void> {
+  const existing = await getWithdrawalById(withdrawalId);
+  if (!existing) throw new Error("Withdrawal not found");
+
+  const updateData: Record<string, unknown> = { ...data };
+  if (data.date) updateData.date = Timestamp.fromDate(data.date);
+  await updateDocument(COLLECTIONS.WITHDRAWALS, withdrawalId, updateData);
+
+  if (existing.expenseId) {
+    await updateExpense(existing.expenseId, {
+      ...(data.amount !== undefined && { amount: data.amount }),
+      ...(data.date !== undefined && { date: data.date }),
+      ...(data.notes !== undefined && { notes: data.notes }),
+    });
+  }
 }
 
 // Approve withdrawal
@@ -144,9 +168,16 @@ export async function rejectWithdrawal(
   });
 }
 
-// Delete withdrawal
+// Delete withdrawal — also deletes its linked expense record where one
+// exists, so deleting a withdrawal doesn't leave a "Founder Withdrawal"
+// expense behind with nothing pointing back to it. Withdrawals created
+// before expenseId was tracked won't have a link to clean up.
 export async function deleteWithdrawal(withdrawalId: string): Promise<void> {
+  const existing = await getWithdrawalById(withdrawalId);
   await deleteDocument(COLLECTIONS.WITHDRAWALS, withdrawalId);
+  if (existing?.expenseId) {
+    await deleteExpense(existing.expenseId);
+  }
 }
 
 // Get total withdrawals by founder

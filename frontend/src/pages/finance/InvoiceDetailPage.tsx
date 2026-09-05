@@ -1,9 +1,9 @@
 import { useState, useMemo } from "react";
-import { Link, useParams } from "react-router-dom";
-import { ArrowLeft, Download, Send, CheckCircle2, CreditCard } from "lucide-react";
+import { Link, useNavigate, useParams } from "react-router-dom";
+import { ArrowLeft, Download, Send, CheckCircle2, CreditCard, Pencil, Trash2 } from "lucide-react";
 import { Button, Card, CardContent, CardHeader, CardTitle, Badge, Progress, Modal, Select, Skeleton } from "@/components/ui";
 import { formatCurrency, formatDate, cn } from "@/lib/utils";
-import { useInvoice, useClient, useProject, useRecordPayment, useUpdateInvoice } from "@/hooks/useFirestore";
+import { useInvoice, useClient, useProject, useRecordPayment, useUpdateInvoice, useDeleteInvoice } from "@/hooks/useFirestore";
 import { generateAndDownloadInvoicePdf } from "@/services/invoicePdfService";
 import toast from "react-hot-toast";
 import type { InvoiceStatus } from "@/types";
@@ -17,6 +17,7 @@ const paymentMethods = [
 
 export default function InvoiceDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
 
   const { data: invoice, isLoading } = useInvoice(id || "");
   const { data: client } = useClient(invoice?.clientId || "");
@@ -24,6 +25,7 @@ export default function InvoiceDetailPage() {
 
   const recordPaymentMutation = useRecordPayment();
   const updateInvoiceMutation = useUpdateInvoice();
+  const deleteInvoiceMutation = useDeleteInvoice();
 
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [showMarkPaidModal, setShowMarkPaidModal] = useState(false);
@@ -94,6 +96,23 @@ export default function InvoiceDetailPage() {
     }
   };
 
+  const handleDelete = async () => {
+    if (!invoice || !id) return;
+    if (
+      window.confirm(
+        `Are you sure you want to delete invoice ${invoice.invoiceNumber}? This action cannot be undone.`
+      )
+    ) {
+      try {
+        await deleteInvoiceMutation.mutateAsync(id);
+        toast.success("Invoice deleted successfully");
+        navigate("/finance/invoices");
+      } catch {
+        toast.error("Failed to delete invoice");
+      }
+    }
+  };
+
   if (isLoading) {
     return <InvoiceDetailSkeleton />;
   }
@@ -146,6 +165,16 @@ export default function InvoiceDetailPage() {
           <Button variant="outline">
             <Send className="h-4 w-4 mr-2" />
             Send Reminder
+          </Button>
+          <Link to={`/finance/invoices/${id}/edit`}>
+            <Button variant="outline">
+              <Pencil className="h-4 w-4 mr-2" />
+              Edit
+            </Button>
+          </Link>
+          <Button variant="destructive" onClick={handleDelete} disabled={deleteInvoiceMutation.isPending}>
+            <Trash2 className="h-4 w-4 mr-2" />
+            Delete
           </Button>
         </div>
       </div>

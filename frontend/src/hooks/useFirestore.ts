@@ -520,7 +520,33 @@ export function useUpdateInvoice() {
       data,
     }: {
       invoiceId: string;
-      data: Partial<Omit<Invoice, "id" | "createdAt" | "updatedAt" | "payments">>;
+      // GST percent/amount fields additionally accept `null` here (on top of
+      // Invoice's own `number | undefined`) so an edit can explicitly clear
+      // them when the invoice's GST type no longer applies — `undefined`
+      // fields get stripped before reaching Firestore and wouldn't clear
+      // anything, only `null` actually does.
+      data: Partial<
+        Omit<
+          Invoice,
+          | "id"
+          | "createdAt"
+          | "updatedAt"
+          | "payments"
+          | "cgstPercent"
+          | "sgstPercent"
+          | "igstPercent"
+          | "cgstAmount"
+          | "sgstAmount"
+          | "igstAmount"
+        >
+      > & {
+        cgstPercent?: number | null;
+        sgstPercent?: number | null;
+        igstPercent?: number | null;
+        cgstAmount?: number | null;
+        sgstAmount?: number | null;
+        igstAmount?: number | null;
+      };
     }) => {
       const { updateInvoice } = await import("@/services/invoiceService");
       return updateInvoice(invoiceId, data);
@@ -835,6 +861,52 @@ export function useCreateWithdrawal() {
   });
 }
 
+export function useUpdateWithdrawal() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      withdrawalId,
+      data,
+    }: {
+      withdrawalId: string;
+      data: Partial<Pick<Withdrawal, "amount" | "date" | "notes">>;
+    }) => {
+      const { updateWithdrawal } = await import("@/services/withdrawalService");
+      return updateWithdrawal(withdrawalId, data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.withdrawals });
+      queryClient.invalidateQueries({ queryKey: queryKeys.founderFinances });
+      queryClient.invalidateQueries({ queryKey: queryKeys.financialSummary });
+      queryClient.invalidateQueries({ queryKey: queryKeys.pendingWithdrawals });
+      // The linked expense's amount/date/notes are kept in sync too
+      queryClient.invalidateQueries({ queryKey: queryKeys.expenses });
+      queryClient.invalidateQueries({ queryKey: queryKeys.thisMonthExpenses });
+    },
+  });
+}
+
+export function useDeleteWithdrawal() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (withdrawalId: string) => {
+      const { deleteWithdrawal } = await import("@/services/withdrawalService");
+      return deleteWithdrawal(withdrawalId);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.withdrawals });
+      queryClient.invalidateQueries({ queryKey: queryKeys.founderFinances });
+      queryClient.invalidateQueries({ queryKey: queryKeys.financialSummary });
+      queryClient.invalidateQueries({ queryKey: queryKeys.pendingWithdrawals });
+      // Deleting a withdrawal also deletes its linked expense
+      queryClient.invalidateQueries({ queryKey: queryKeys.expenses });
+      queryClient.invalidateQueries({ queryKey: queryKeys.thisMonthExpenses });
+    },
+  });
+}
+
 export function useApproveWithdrawal() {
   const queryClient = useQueryClient();
 
@@ -889,6 +961,46 @@ export function useCreateRepayment() {
     mutationFn: async (data: Omit<Repayment, "id" | "createdAt">) => {
       const { createRepayment } = await import("@/services/repaymentService");
       return createRepayment(data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.repayments });
+      queryClient.invalidateQueries({ queryKey: queryKeys.withdrawals });
+      queryClient.invalidateQueries({ queryKey: queryKeys.founderFinances });
+      queryClient.invalidateQueries({ queryKey: queryKeys.financialSummary });
+    },
+  });
+}
+
+export function useUpdateRepayment() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      repaymentId,
+      data,
+    }: {
+      repaymentId: string;
+      data: Partial<Pick<Repayment, "amount" | "date" | "notes">>;
+    }) => {
+      const { updateRepayment } = await import("@/services/repaymentService");
+      return updateRepayment(repaymentId, data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.repayments });
+      queryClient.invalidateQueries({ queryKey: queryKeys.withdrawals });
+      queryClient.invalidateQueries({ queryKey: queryKeys.founderFinances });
+      queryClient.invalidateQueries({ queryKey: queryKeys.financialSummary });
+    },
+  });
+}
+
+export function useDeleteRepayment() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (repaymentId: string) => {
+      const { deleteRepayment } = await import("@/services/repaymentService");
+      return deleteRepayment(repaymentId);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.repayments });

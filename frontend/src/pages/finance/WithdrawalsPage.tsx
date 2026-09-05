@@ -1,6 +1,6 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Link } from "react-router-dom";
-import { ArrowLeft, Plus, ArrowDownCircle, ArrowUpCircle, Loader2 } from "lucide-react";
+import { ArrowLeft, Plus, ArrowDownCircle, ArrowUpCircle, Loader2, Pencil, Trash2 } from "lucide-react";
 import {
   Button,
   Card,
@@ -21,8 +21,12 @@ import {
   useFounderFinances,
   useWithdrawals,
   useCreateWithdrawal,
+  useUpdateWithdrawal,
+  useDeleteWithdrawal,
   useRepayments,
   useCreateRepayment,
+  useUpdateRepayment,
+  useDeleteRepayment,
 } from "@/hooks/useFirestore";
 import toast from "react-hot-toast";
 
@@ -42,12 +46,30 @@ export default function WithdrawalsPage() {
   const [amount, setAmount] = useState("");
   const [notes, setNotes] = useState("");
 
+  const [editingEntry, setEditingEntry] = useState<LedgerEntry | null>(null);
+  const [editAmount, setEditAmount] = useState("");
+  const [editNotes, setEditNotes] = useState("");
+
   const { data: founders } = useFounders();
   const { data: founderFinances, isLoading: loadingFinances } = useFounderFinances();
   const { data: withdrawals, isLoading: loadingWithdrawals } = useWithdrawals();
   const { data: repayments, isLoading: loadingRepayments } = useRepayments();
   const createWithdrawalMutation = useCreateWithdrawal();
   const createRepaymentMutation = useCreateRepayment();
+  const updateWithdrawalMutation = useUpdateWithdrawal();
+  const updateRepaymentMutation = useUpdateRepayment();
+  const deleteWithdrawalMutation = useDeleteWithdrawal();
+  const deleteRepaymentMutation = useDeleteRepayment();
+
+  // Prefill the edit form whenever a different ledger entry is opened for
+  // editing, keyed on its id+kind so it only resets on a genuine target
+  // change, not on every render.
+  useEffect(() => {
+    if (!editingEntry) return;
+    setEditAmount(String(editingEntry.amount));
+    setEditNotes(editingEntry.notes || "");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editingEntry?.id, editingEntry?.kind]);
 
   const founderOptions = useMemo(() => {
     if (!founders) return [];
@@ -146,6 +168,55 @@ export default function WithdrawalsPage() {
   };
 
   const isSubmitting = createWithdrawalMutation.isPending || createRepaymentMutation.isPending;
+
+  const isEditSubmitting = updateWithdrawalMutation.isPending || updateRepaymentMutation.isPending;
+
+  const handleSaveEdit = async () => {
+    if (!editingEntry || !editAmount || Number(editAmount) <= 0) {
+      toast.error("Please enter a valid amount");
+      return;
+    }
+
+    try {
+      const data = {
+        amount: Number(editAmount),
+        notes: editNotes.trim() || undefined,
+      };
+      if (editingEntry.kind === "WITHDRAWAL") {
+        await updateWithdrawalMutation.mutateAsync({ withdrawalId: editingEntry.id, data });
+        toast.success("Withdrawal updated successfully");
+      } else {
+        await updateRepaymentMutation.mutateAsync({ repaymentId: editingEntry.id, data });
+        toast.success("Repayment updated successfully");
+      }
+      setEditingEntry(null);
+    } catch (error) {
+      console.error(`Error updating ${editingEntry.kind.toLowerCase()}:`, error);
+      const message =
+        error instanceof Error
+          ? error.message
+          : `Failed to update ${editingEntry.kind === "WITHDRAWAL" ? "withdrawal" : "repayment"}`;
+      toast.error(message);
+    }
+  };
+
+  const handleDelete = async (entry: LedgerEntry) => {
+    const label = entry.kind === "WITHDRAWAL" ? "withdrawal" : "repayment";
+    if (!window.confirm(`Are you sure you want to delete this ${label} of ${formatCurrency(entry.amount)}? This action cannot be undone.`)) {
+      return;
+    }
+    try {
+      if (entry.kind === "WITHDRAWAL") {
+        await deleteWithdrawalMutation.mutateAsync(entry.id);
+      } else {
+        await deleteRepaymentMutation.mutateAsync(entry.id);
+      }
+      toast.success(`${entry.kind === "WITHDRAWAL" ? "Withdrawal" : "Repayment"} deleted successfully`);
+    } catch (error) {
+      console.error(`Error deleting ${label}:`, error);
+      toast.error(`Failed to delete ${label}`);
+    }
+  };
 
   // Loading states are checked individually in the JSX
 
@@ -278,13 +349,33 @@ export default function WithdrawalsPage() {
                         )}
                       </div>
                     </div>
-                    <div className="text-right">
-                      <p className={`font-semibold text-lg ${isRepayment ? "text-green-600" : ""}`}>
-                        {isRepayment ? "+" : "-"}{formatCurrency(entry.amount)}
-                      </p>
-                      <Badge variant={isRepayment ? "success" : "secondary"}>
-                        {isRepayment ? "Repayment" : "Withdrawal"}
-                      </Badge>
+                    <div className="flex items-center gap-3">
+                      <div className="text-right">
+                        <p className={`font-semibold text-lg ${isRepayment ? "text-green-600" : ""}`}>
+                          {isRepayment ? "+" : "-"}{formatCurrency(entry.amount)}
+                        </p>
+                        <Badge variant={isRepayment ? "success" : "secondary"}>
+                          {isRepayment ? "Repayment" : "Withdrawal"}
+                        </Badge>
+                      </div>
+                      <div className="flex gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8"
+                          onClick={() => setEditingEntry(entry)}
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-destructive hover:text-destructive"
+                          onClick={() => handleDelete(entry)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 );
@@ -362,6 +453,53 @@ export default function WithdrawalsPage() {
             </Button>
           </div>
         </div>
+      </Modal>
+
+      {/* Edit Entry Modal */}
+      <Modal
+        isOpen={!!editingEntry}
+        onClose={() => setEditingEntry(null)}
+        title={editingEntry?.kind === "WITHDRAWAL" ? "Edit Withdrawal" : "Edit Repayment"}
+      >
+        {editingEntry && (
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Amount *</Label>
+              <Input
+                type="number"
+                min="0"
+                value={editAmount}
+                onChange={(e) => setEditAmount(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Notes</Label>
+              <Input
+                placeholder="Optional notes..."
+                value={editNotes}
+                onChange={(e) => setEditNotes(e.target.value)}
+              />
+            </div>
+            <div className="flex gap-3 justify-end pt-4 border-t">
+              <Button variant="outline" onClick={() => setEditingEntry(null)}>
+                Cancel
+              </Button>
+              <Button
+                onClick={handleSaveEdit}
+                disabled={!editAmount || Number(editAmount) <= 0 || isEditSubmitting}
+              >
+                {isEditSubmitting ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  "Save Changes"
+                )}
+              </Button>
+            </div>
+          </div>
+        )}
       </Modal>
     </div>
   );

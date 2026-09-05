@@ -125,6 +125,10 @@ export const router = createBrowserRouter([
         element: <InvoiceDetailPage />,
       },
       {
+        path: "finance/invoices/:id/edit",
+        element: <InvoiceFormPage />,
+      },
+      {
         path: "finance/expenses",
         element: <ExpensesPage />,
       },

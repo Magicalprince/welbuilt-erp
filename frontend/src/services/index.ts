@@ -12,4 +12,3 @@ export * from "./noteService";
 export * from "./documentService";
 export * from "./activityLogService";
 export * from "./settingsService";
-export * from "./communicationService";

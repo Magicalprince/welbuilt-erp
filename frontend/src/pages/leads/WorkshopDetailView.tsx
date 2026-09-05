@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
-import { ArrowLeft, TrendingUp, TrendingDown, IndianRupee } from "lucide-react";
+import { ArrowLeft, TrendingUp, TrendingDown, IndianRupee, Trash2 } from "lucide-react";
 import { Button, Card, CardContent, Badge, Label, Input, Select, Textarea } from "@/components/ui";
 import { formatCurrency, formatDate } from "@/lib/utils";
-import { useWorkshop, useUpdateWorkshop } from "@/hooks/useLeads";
+import { useWorkshop, useUpdateWorkshop, useDeleteWorkshop } from "@/hooks/useLeads";
 import { getWorkshopFinancials } from "@/services/workshopService";
 import type { Workshop, WorkshopExpense, WorkshopExpenseCategory, WorkshopStatus } from "@/types";
 import { WORKSHOP_STATUS_LABELS, WORKSHOP_EXPENSE_CATEGORY_LABELS } from "@/types";
@@ -60,6 +60,7 @@ function buildDetailForm(workshop: Workshop): DetailFormState {
 export default function WorkshopDetailView({ workshopId, onBack }: WorkshopDetailViewProps) {
   const { data: workshop, isLoading } = useWorkshop(workshopId);
   const updateMutation = useUpdateWorkshop();
+  const deleteMutation = useDeleteWorkshop();
 
   const [form, setForm] = useState<DetailFormState | null>(null);
 
@@ -79,6 +80,24 @@ export default function WorkshopDetailView({ workshopId, onBack }: WorkshopDetai
 
   const financials = getWorkshopFinancials(workshop);
   const { expenseForm } = form;
+
+  const handleDelete = async () => {
+    if (
+      !window.confirm(
+        `Are you sure you want to delete "${workshop.workshopTitle}"? This action cannot be undone.`
+      )
+    ) {
+      return;
+    }
+    try {
+      await deleteMutation.mutateAsync(workshop.id);
+      toast.success("Workshop deleted successfully");
+      onBack();
+    } catch (error) {
+      console.error("Failed to delete workshop:", error);
+      toast.error("Failed to delete workshop");
+    }
+  };
 
   const handleSave = async () => {
     const expenses: WorkshopExpense[] = EXPENSE_CATEGORIES.filter(
@@ -153,22 +172,28 @@ export default function WorkshopDetailView({ workshopId, onBack }: WorkshopDetai
 
   return (
     <div className="space-y-6">
-      <div className="flex items-start gap-4">
-        <Button variant="ghost" size="icon" onClick={onBack}>
-          <ArrowLeft className="h-5 w-5" />
-        </Button>
-        <div className="min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <h1 className="text-2xl font-bold truncate">{workshop.workshopTitle}</h1>
-            <Badge variant={workshop.status === "COMPLETED" ? "success" : "warning"}>
-              {WORKSHOP_STATUS_LABELS[workshop.status]}
-            </Badge>
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex items-start gap-4 min-w-0">
+          <Button variant="ghost" size="icon" onClick={onBack}>
+            <ArrowLeft className="h-5 w-5" />
+          </Button>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h1 className="text-2xl font-bold truncate">{workshop.workshopTitle}</h1>
+              <Badge variant={workshop.status === "COMPLETED" ? "success" : "warning"}>
+                {WORKSHOP_STATUS_LABELS[workshop.status]}
+              </Badge>
+            </div>
+            <p className="text-muted-foreground mt-1">
+              {workshop.targetYear} · {formatDate(workshop.startDate)} – {formatDate(workshop.endDate)} ·{" "}
+              {workshop.durationDays} day{workshop.durationDays !== 1 ? "s" : ""}
+            </p>
           </div>
-          <p className="text-muted-foreground mt-1">
-            {workshop.targetYear} · {formatDate(workshop.startDate)} – {formatDate(workshop.endDate)} ·{" "}
-            {workshop.durationDays} day{workshop.durationDays !== 1 ? "s" : ""}
-          </p>
         </div>
+        <Button variant="destructive" onClick={handleDelete} disabled={deleteMutation.isPending}>
+          <Trash2 className="h-4 w-4 mr-2" />
+          Delete
+        </Button>
       </div>
 
       <div className="grid gap-4 md:grid-cols-3">
