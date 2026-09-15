@@ -168,11 +168,11 @@ export async function generateSparksCertificatePdf(data: SparksCertificateData):
   const line1Segs = [
     { text: "This is to certify that ", bold: false },
     { text: data.name, bold: true },
-    { text: ", a student of ", bold: false },
+    { text: "a student of ", bold: false },
     { text: data.college, bold: true },
   ];
   const line2Segs = [
-    { text: ", has successfully completed an internship in ", bold: false },
+    { text: "has successfully completed an internship in ", bold: false },
     { text: data.domain, bold: true },
     { text: " at ", bold: false },
     { text: "Sparks AI Solutions.", bold: true },
