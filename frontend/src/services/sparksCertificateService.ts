@@ -170,10 +170,8 @@ export async function generateSparksCertificatePdf(data: SparksCertificateData):
     { text: data.name, bold: true },
     { text: ", a student of ", bold: false },
     { text: data.college, bold: true },
-    { text: " pursuing", bold: false },
   ];
   const line2Segs = [
-    { text: data.domain, bold: true },
     { text: ", has successfully completed an internship in ", bold: false },
     { text: data.domain, bold: true },
     { text: " at ", bold: false },
