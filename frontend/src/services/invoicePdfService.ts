@@ -384,9 +384,7 @@ export async function generateInvoicePdf(
   const bodyRows: BodyRow[] = measuredRows.map(({ item, lines }, idx) => ({
     height: Math.max(rowH, lines.length * 11 + 4),
     draw: (rowY) => {
-      if (idx === 0) {
-        page.drawText("1", { x: MARGIN + 6, y: rowY - 12, size: 9, font: regular });
-      }
+      page.drawText(String(idx + 1), { x: MARGIN + 6, y: rowY - 12, size: 9, font: regular });
       lines.forEach((line, li) => {
         page.drawText(line, { x: colParticularsX, y: rowY - 12 - li * 11, size: 9, font: li === 0 ? bold : regular });
       });
@@ -658,13 +656,30 @@ export async function generateInvoicePdf(
 
 // ── Public API ────────────────────────────────────────────────────────────
 
+export async function generateInvoicePdfBlob(
+  invoice: Invoice,
+  client: Client,
+  project: Project | null,
+): Promise<Blob> {
+  const companySettings = await getCompanySettings();
+  const pdfBytes = await generateInvoicePdf(invoice, client, project, companySettings);
+  return new Blob([new Uint8Array(pdfBytes)], { type: "application/pdf" });
+}
+
+export async function generateInvoicePdfUrl(
+  invoice: Invoice,
+  client: Client,
+  project: Project | null,
+): Promise<string> {
+  const blob = await generateInvoicePdfBlob(invoice, client, project);
+  return URL.createObjectURL(blob);
+}
+
 export async function generateAndDownloadInvoicePdf(
   invoice: Invoice,
   client: Client,
   project: Project | null,
 ): Promise<void> {
-  const companySettings = await getCompanySettings();
-  const pdfBytes = await generateInvoicePdf(invoice, client, project, companySettings);
-  const blob = new Blob([new Uint8Array(pdfBytes)], { type: "application/pdf" });
+  const blob = await generateInvoicePdfBlob(invoice, client, project);
   saveAs(blob, `${invoice.invoiceNumber}_${client.companyName.replace(/\s+/g, "_")}.pdf`);
 }

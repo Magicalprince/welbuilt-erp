@@ -1,10 +1,10 @@
 import { useState, useMemo } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, Download, Send, CheckCircle2, CreditCard, Pencil, Trash2 } from "lucide-react";
+import { ArrowLeft, Download, Send, CheckCircle2, CreditCard, Pencil, Trash2, Eye, ExternalLink } from "lucide-react";
 import { Button, Card, CardContent, CardHeader, CardTitle, Badge, Progress, Modal, Select, Skeleton } from "@/components/ui";
 import { formatCurrency, formatDate, cn } from "@/lib/utils";
 import { useInvoice, useClient, useProject, useRecordPayment, useUpdateInvoice, useDeleteInvoice } from "@/hooks/useFirestore";
-import { generateAndDownloadInvoicePdf } from "@/services/invoicePdfService";
+import { generateAndDownloadInvoicePdf, generateInvoicePdfUrl } from "@/services/invoicePdfService";
 import toast from "react-hot-toast";
 import type { InvoiceStatus } from "@/types";
 
@@ -29,6 +29,9 @@ export default function InvoiceDetailPage() {
 
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [showMarkPaidModal, setShowMarkPaidModal] = useState(false);
+  const [showPreviewModal, setShowPreviewModal] = useState(false);
+  const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
+  const [isPreviewLoading, setIsPreviewLoading] = useState(false);
   const [selectedPayment, setSelectedPayment] = useState<{
     id: string;
     description: string;
@@ -46,6 +49,28 @@ export default function InvoiceDetailPage() {
       toast.error("Failed to generate invoice PDF");
     } finally {
       setIsDownloading(false);
+    }
+  };
+
+  const handleViewPdf = async () => {
+    if (!invoice || !client) return;
+    setIsPreviewLoading(true);
+    try {
+      const url = await generateInvoicePdfUrl(invoice, client, project ?? null);
+      setPdfPreviewUrl(url);
+      setShowPreviewModal(true);
+    } catch {
+      toast.error("Failed to generate invoice PDF preview");
+    } finally {
+      setIsPreviewLoading(false);
+    }
+  };
+
+  const handleClosePreviewModal = () => {
+    setShowPreviewModal(false);
+    if (pdfPreviewUrl) {
+      URL.revokeObjectURL(pdfPreviewUrl);
+      setPdfPreviewUrl(null);
     }
   };
 
@@ -151,13 +176,17 @@ export default function InvoiceDetailPage() {
             </p>
           </div>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           {invoice.status !== "PAID" && invoice.status !== "CANCELLED" && (
             <Button onClick={() => setShowMarkPaidModal(true)}>
               <CreditCard className="h-4 w-4 mr-2" />
               Mark as Paid
             </Button>
           )}
+          <Button variant="default" className="bg-blue-600 hover:bg-blue-700 text-white" onClick={handleViewPdf} disabled={isPreviewLoading || !client}>
+            <Eye className="h-4 w-4 mr-2" />
+            {isPreviewLoading ? "Loading..." : "View Invoice"}
+          </Button>
           <Button variant="outline" onClick={handleDownloadPdf} disabled={isDownloading || !client}>
             <Download className="h-4 w-4 mr-2" />
             {isDownloading ? "Generating..." : "Download PDF"}
@@ -494,6 +523,49 @@ export default function InvoiceDetailPage() {
               {updateInvoiceMutation.isPending ? "Processing..." : "Confirm Payment"}
             </Button>
           </div>
+        </div>
+      </Modal>
+
+      {/* PDF View / Preview Modal */}
+      <Modal
+        isOpen={showPreviewModal}
+        onClose={handleClosePreviewModal}
+        title={`Invoice Preview — ${invoice?.invoiceNumber}`}
+        size="full"
+      >
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2 bg-muted/60 p-3 rounded-lg border">
+            <span className="text-sm font-medium">
+              Invoice #{invoice?.invoiceNumber} • {client?.companyName}
+            </span>
+            <div className="flex items-center gap-2">
+              {pdfPreviewUrl && (
+                <a href={pdfPreviewUrl} target="_blank" rel="noopener noreferrer">
+                  <Button variant="outline" size="sm">
+                    <ExternalLink className="h-4 w-4 mr-1" />
+                    Open in New Tab
+                  </Button>
+                </a>
+              )}
+              <Button size="sm" onClick={handleDownloadPdf} disabled={isDownloading}>
+                <Download className="h-4 w-4 mr-1" />
+                Download PDF
+              </Button>
+            </div>
+          </div>
+          {pdfPreviewUrl ? (
+            <div className="w-full h-[78vh] rounded-lg overflow-hidden border bg-zinc-900 flex items-center justify-center">
+              <iframe
+                src={pdfPreviewUrl}
+                title={`Invoice ${invoice?.invoiceNumber}`}
+                className="w-full h-full border-none"
+              />
+            </div>
+          ) : (
+            <div className="h-[60vh] flex items-center justify-center">
+              <p className="text-muted-foreground">Generating invoice preview...</p>
+            </div>
+          )}
         </div>
       </Modal>
     </div>
