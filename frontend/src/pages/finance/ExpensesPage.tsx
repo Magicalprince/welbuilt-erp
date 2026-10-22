@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { Link } from "react-router-dom";
-import { ArrowLeft, Plus, Receipt, Loader2, Trash2 } from "lucide-react";
+import { ArrowLeft, Plus, Receipt, Loader2, Trash2, Search, Download, X } from "lucide-react";
 import {
   Button,
   Card,
@@ -14,12 +14,16 @@ import {
   Textarea,
   Badge,
   Skeleton,
+  Pagination,
+  DateRangeFilter,
 } from "@/components/ui";
-import { formatCurrency, formatDate } from "@/lib/utils";
+import { formatCurrency, formatDate, isWithinDateRange, EMPTY_DATE_RANGE, type DateRange } from "@/lib/utils";
 import { useExpenses, useCreateExpense, useDeleteExpense } from "@/hooks/useFirestore";
+import { usePagination } from "@/hooks/usePagination";
 import { useAuthStore } from "@/store/authStore";
 import type { ExpenseCategory } from "@/types";
 import toast from "react-hot-toast";
+import { generateAndDownloadFinanceStatementPdf, expensesToStatementRows } from "@/services/financeStatementPdfService";
 
 const categoryOptions: { value: ExpenseCategory; label: string }[] = [
   { value: "TOOLS", label: "Software & Tools" },
@@ -54,24 +58,70 @@ export default function ExpensesPage() {
   const [category, setCategory] = useState<ExpenseCategory>("OTHER");
   const [notes, setNotes] = useState("");
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [dateRange, setDateRange] = useState<DateRange>(EMPTY_DATE_RANGE);
+  const [isExporting, setIsExporting] = useState(false);
 
   const { user } = useAuthStore();
   const { data: expenses, isLoading } = useExpenses();
   const createExpenseMutation = useCreateExpense();
   const deleteExpenseMutation = useDeleteExpense();
 
+  const filteredExpenses = useMemo(() => {
+    if (!expenses) return [];
+    const query = searchQuery.trim().toLowerCase();
+    return expenses.filter((expense) => {
+      const matchesSearch = !query || expense.description.toLowerCase().includes(query);
+      const matchesDate = isWithinDateRange(expense.date, dateRange.from, dateRange.to);
+      return matchesSearch && matchesDate;
+    });
+  }, [expenses, searchQuery, dateRange]);
+
+  const { paginatedItems: paginatedExpenses, currentPage, setCurrentPage, totalItems } = usePagination(filteredExpenses);
+
+  const hasActiveFilters = !!searchQuery || !!dateRange.from || !!dateRange.to;
+
+  const handleClearFilters = () => {
+    setSearchQuery("");
+    setDateRange(EMPTY_DATE_RANGE);
+  };
+
+  const getCategoryLabel = (cat: ExpenseCategory) =>
+    categoryOptions.find((c) => c.value === cat)?.label || cat;
+
+  const handleExportPdf = async () => {
+    setIsExporting(true);
+    try {
+      const dateRangeLabel =
+        dateRange.from || dateRange.to
+          ? `${dateRange.from ? formatDate(dateRange.from) : "Start"} – ${dateRange.to ? formatDate(dateRange.to) : "Now"}`
+          : undefined;
+      await generateAndDownloadFinanceStatementPdf(
+        {
+          title: "Expense Statement",
+          dateRangeLabel,
+          expenses: expensesToStatementRows(filteredExpenses, getCategoryLabel),
+        },
+        `Expense_Statement_${new Date().toISOString().split("T")[0]}.pdf`
+      );
+    } catch (error) {
+      console.error("Error exporting expense PDF:", error);
+      toast.error("Failed to export PDF");
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   const totalExpenses = useMemo(() => {
-    if (!expenses) return 0;
-    return expenses.reduce((sum, e) => sum + e.amount, 0);
-  }, [expenses]);
+    return filteredExpenses.reduce((sum, e) => sum + e.amount, 0);
+  }, [filteredExpenses]);
 
   const expensesByCategory = useMemo(() => {
-    if (!expenses) return {};
-    return expenses.reduce((acc, expense) => {
+    return filteredExpenses.reduce((acc, expense) => {
       acc[expense.category] = (acc[expense.category] || 0) + expense.amount;
       return acc;
     }, {} as Record<string, number>);
-  }, [expenses]);
+  }, [filteredExpenses]);
 
   const handleOpenModal = () => {
     setDescription("");
@@ -129,10 +179,36 @@ export default function ExpensesPage() {
             <p className="text-muted-foreground">Track and manage company expenses</p>
           </div>
         </div>
-        <Button onClick={handleOpenModal}>
-          <Plus className="h-4 w-4 mr-2" />
-          Add Expense
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={handleExportPdf} disabled={isExporting || filteredExpenses.length === 0}>
+            <Download className="h-4 w-4 mr-2" />
+            {isExporting ? "Generating..." : "Export PDF"}
+          </Button>
+          <Button onClick={handleOpenModal}>
+            <Plus className="h-4 w-4 mr-2" />
+            Add Expense
+          </Button>
+        </div>
+      </div>
+
+      {/* Filters */}
+      <div className="flex flex-col md:flex-row gap-3 md:items-center">
+        <div className="relative flex-1 max-w-md">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Search expenses..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-10"
+          />
+        </div>
+        <DateRangeFilter value={dateRange} onChange={setDateRange} />
+        {hasActiveFilters && (
+          <Button variant="ghost" size="sm" onClick={handleClearFilters}>
+            <X className="h-4 w-4 mr-1" />
+            Clear filters
+          </Button>
+        )}
       </div>
 
       {/* Summary Cards */}
@@ -170,9 +246,9 @@ export default function ExpensesPage() {
                 <Skeleton key={i} className="h-16 w-full" />
               ))}
             </div>
-          ) : expenses && expenses.length > 0 ? (
+          ) : filteredExpenses.length > 0 ? (
             <div className="space-y-3">
-              {expenses.map((expense) => (
+              {paginatedExpenses.map((expense) => (
                 <div
                   key={expense.id}
                   className="flex items-center justify-between p-4 rounded-lg border hover:bg-accent/50 transition-colors"
@@ -204,9 +280,17 @@ export default function ExpensesPage() {
                 </div>
               ))}
             </div>
+          ) : hasActiveFilters ? (
+            <p className="text-center py-8 text-muted-foreground">No expenses match your filters</p>
           ) : (
             <p className="text-center py-8 text-muted-foreground">No expenses recorded yet</p>
           )}
+          <Pagination
+            currentPage={currentPage}
+            totalItems={totalItems}
+            pageSize={20}
+            onPageChange={setCurrentPage}
+          />
         </CardContent>
       </Card>
 
