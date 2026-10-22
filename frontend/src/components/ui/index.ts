@@ -11,6 +11,8 @@ export { Progress } from "./Progress";
 export { Skeleton, SkeletonCard, SkeletonTable } from "./Skeleton";
 export { Checkbox, type CheckboxProps } from "./Checkbox";
 export { Tabs, TabsList, TabsTrigger, TabsContent } from "./Tabs";
+export { Pagination } from "./Pagination";
+export { DateRangeFilter } from "./DateRangeFilter";
 export { Logo, AnimatedLogo, LogoWithText } from "./Logo";
 export { LoadingScreen, LoadingSpinner } from "./LoadingScreen";
 export { AnimatedNumber, AnimatedCurrency, AnimatedPercentage, AnimatedStat } from "./AnimatedNumber";

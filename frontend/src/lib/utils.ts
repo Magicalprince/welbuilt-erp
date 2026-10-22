@@ -1,5 +1,6 @@
 import { type ClassValue, clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
+import { endOfDay, isAfter, isBefore, startOfDay } from "date-fns";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -65,4 +66,24 @@ export function getRelativeTime(date: Date | string): string {
 export function calculateProgress(completed: number, total: number): number {
   if (total === 0) return 0;
   return Math.round((completed / total) * 100);
+}
+
+export interface DateRange {
+  from: string; // yyyy-MM-dd, empty string = unset
+  to: string;
+}
+
+export const EMPTY_DATE_RANGE: DateRange = { from: "", to: "" };
+
+/**
+ * Checks whether `date` falls within [from, to], both inclusive. `from`/`to`
+ * are yyyy-MM-dd strings from a date input, or empty to leave that bound
+ * open. The "to" bound is compared at end-of-day so a date equal to "to"
+ * (same calendar day, any time) is correctly included rather than excluded
+ * by a bare Date(to) which defaults to midnight.
+ */
+export function isWithinDateRange(date: Date, from: string, to: string): boolean {
+  if (from && isBefore(date, startOfDay(new Date(from)))) return false;
+  if (to && isAfter(date, endOfDay(new Date(to)))) return false;
+  return true;
 }
