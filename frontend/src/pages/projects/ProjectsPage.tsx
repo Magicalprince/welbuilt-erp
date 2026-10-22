@@ -8,9 +8,10 @@ import {
   List,
   LayoutGrid,
 } from "lucide-react";
-import { Button, Input, Card, CardContent, Badge, Progress, Skeleton } from "@/components/ui";
+import { Button, Input, Card, CardContent, Badge, Progress, Skeleton, Pagination } from "@/components/ui";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { useProjects } from "@/hooks/useFirestore";
+import { usePagination } from "@/hooks/usePagination";
 import type { Project, ProjectStatus } from "@/types";
 
 const statusFilters: { label: string; value: ProjectStatus | "ALL" }[] = [
@@ -42,6 +43,8 @@ export default function ProjectsPage() {
       return matchesSearch && matchesStatus;
     });
   }, [projects, searchQuery, statusFilter]);
+
+  const { paginatedItems: paginatedProjects, currentPage, setCurrentPage, totalItems } = usePagination(filteredProjects);
 
   return (
     <div className="space-y-6">
@@ -137,26 +140,36 @@ export default function ProjectsPage() {
             </Link>
           )}
         </div>
-      ) : viewMode === "grid" ? (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          className="grid gap-4 md:grid-cols-2 lg:grid-cols-3"
-        >
-          {filteredProjects.map((project, index) => (
-            <ProjectCard key={project.id} project={project} index={index} />
-          ))}
-        </motion.div>
       ) : (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          className="space-y-3"
-        >
-          {filteredProjects.map((project, index) => (
-            <ProjectListItem key={project.id} project={project} index={index} />
-          ))}
-        </motion.div>
+        <>
+          {viewMode === "grid" ? (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="grid gap-4 md:grid-cols-2 lg:grid-cols-3"
+            >
+              {paginatedProjects.map((project, index) => (
+                <ProjectCard key={project.id} project={project} index={index} />
+              ))}
+            </motion.div>
+          ) : (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="space-y-3"
+            >
+              {paginatedProjects.map((project, index) => (
+                <ProjectListItem key={project.id} project={project} index={index} />
+              ))}
+            </motion.div>
+          )}
+          <Pagination
+            currentPage={currentPage}
+            totalItems={totalItems}
+            pageSize={20}
+            onPageChange={setCurrentPage}
+          />
+        </>
       )}
     </div>
   );

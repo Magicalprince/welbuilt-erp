@@ -2,9 +2,10 @@ import { useState, useMemo } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Plus, Search, FileText, Eye, Download, ExternalLink } from "lucide-react";
-import { Button, Input, Card, CardContent, Badge, Skeleton, Modal } from "@/components/ui";
+import { Button, Input, Card, CardContent, Badge, Skeleton, Modal, Pagination } from "@/components/ui";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { useInvoices, useClients } from "@/hooks/useFirestore";
+import { usePagination } from "@/hooks/usePagination";
 import { generateInvoicePdfUrl, generateAndDownloadInvoicePdf } from "@/services/invoicePdfService";
 import toast from "react-hot-toast";
 import type { Invoice, InvoiceStatus } from "@/types";
@@ -95,6 +96,8 @@ export default function InvoicesPage() {
     });
   }, [invoicesWithClientName, searchQuery, statusFilter]);
 
+  const { paginatedItems: paginatedInvoices, currentPage, setCurrentPage, totalItems } = usePagination(filteredInvoices);
+
   const totalPending = useMemo(() => {
     if (!invoices) return 0;
     return invoices
@@ -180,7 +183,7 @@ export default function InvoicesPage() {
         </div>
       ) : (
         <div className="space-y-4">
-          {filteredInvoices.map((invoice, index) => (
+          {paginatedInvoices.map((invoice, index) => (
             <motion.div
               key={invoice.id}
               initial={{ opacity: 0, y: 20 }}
@@ -254,6 +257,15 @@ export default function InvoicesPage() {
             </motion.div>
           ))}
         </div>
+      )}
+
+      {!isLoading && !error && filteredInvoices.length > 0 && (
+        <Pagination
+          currentPage={currentPage}
+          totalItems={totalItems}
+          pageSize={20}
+          onPageChange={setCurrentPage}
+        />
       )}
 
       {/* PDF View / Preview Modal */}

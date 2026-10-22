@@ -2,9 +2,10 @@ import { useState, useMemo } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Plus, Search, Mail, Phone, Users, Building2, Zap } from "lucide-react";
-import { Button, Input, Card, CardContent, Badge, Avatar, Skeleton } from "@/components/ui";
+import { Button, Input, Card, CardContent, Badge, Avatar, Skeleton, Pagination } from "@/components/ui";
 import { cn, formatCurrency } from "@/lib/utils";
 import { useClients, useProjects, useInvoices } from "@/hooks/useFirestore";
+import { usePagination } from "@/hooks/usePagination";
 import type { ClientStatus } from "@/types";
 import SparkedClientsView from "./SparkedClientsView";
 
@@ -56,6 +57,8 @@ export default function ClientsPage() {
       return matchesSearch && matchesStatus;
     });
   }, [clientsWithStats, searchQuery, statusFilter]);
+
+  const { paginatedItems: paginatedClients, currentPage, setCurrentPage, totalItems } = usePagination(filteredClients);
 
   return (
     <div className="space-y-6">
@@ -153,7 +156,7 @@ export default function ClientsPage() {
             </div>
           ) : (
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {filteredClients.map((client, index) => (
+              {paginatedClients.map((client, index) => (
                 <motion.div
                   key={client.id}
                   initial={{ opacity: 0, y: 20 }}
@@ -203,6 +206,15 @@ export default function ClientsPage() {
                 </motion.div>
               ))}
             </div>
+          )}
+
+          {!loadingClients && filteredClients.length > 0 && (
+            <Pagination
+              currentPage={currentPage}
+              totalItems={totalItems}
+              pageSize={20}
+              onPageChange={setCurrentPage}
+            />
           )}
         </>
       )}
