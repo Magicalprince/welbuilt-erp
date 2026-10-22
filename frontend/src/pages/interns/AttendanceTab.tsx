@@ -26,8 +26,10 @@ import {
   Label,
   Select,
   Checkbox,
+  Pagination,
 } from "@/components/ui";
 import { cn } from "@/lib/utils";
+import { usePagination } from "@/hooks/usePagination";
 import { useInterns, useDeleteIntern, useBulkDeleteInterns, internQueryKeys } from "@/hooks/useInterns";
 import { useQueryClient } from "@tanstack/react-query";
 import type { Intern, InternPaymentStatus } from "@/types";
@@ -144,6 +146,8 @@ export default function AttendanceTab() {
       return matchesSearch && matchesDomain && matchesYear && matchesPayment;
     });
   }, [interns, searchQuery, domainFilter, yearFilter, paymentFilter, activeBrand]);
+
+  const { paginatedItems: paginatedInterns, currentPage, setCurrentPage, totalItems } = usePagination(filteredInterns);
 
   // Handle download (for interns that already have attendance data)
   const handleDownloadAttendance = async (intern: Intern) => {
@@ -430,7 +434,7 @@ export default function AttendanceTab() {
                       </tr>
                     </thead>
                     <tbody>
-                      {filteredInterns.map((intern) => {
+                      {paginatedInterns.map((intern) => {
                         const hasAttendanceData = intern.totalInternshipDays !== undefined && intern.daysPresent !== undefined;
                         const daysAbsent = hasAttendanceData ? (intern.totalInternshipDays! - intern.daysPresent!) : null;
                         const percentage = hasAttendanceData && intern.totalInternshipDays! > 0
@@ -552,6 +556,15 @@ export default function AttendanceTab() {
                 </div>
               </CardContent>
             </Card>
+          )}
+
+          {!isLoading && filteredInterns.length > 0 && (
+            <Pagination
+              currentPage={currentPage}
+              totalItems={totalItems}
+              pageSize={20}
+              onPageChange={setCurrentPage}
+            />
           )}
         </>
       ) : (

@@ -26,8 +26,10 @@ import {
   Label,
   Select,
   Checkbox,
+  Pagination,
 } from "@/components/ui";
 import { cn } from "@/lib/utils";
+import { usePagination } from "@/hooks/usePagination";
 import { useInterns, useCreateIntern, useDeleteIntern, useBulkDeleteInterns, internQueryKeys } from "@/hooks/useInterns";
 import { useQueryClient } from "@tanstack/react-query";
 import type { Intern, InternPaymentStatus, InternDuration, InternMode } from "@/types";
@@ -147,6 +149,8 @@ export default function OfferLettersTab() {
       return matchesSearch && matchesDomain && matchesYear && matchesPayment;
     });
   }, [interns, searchQuery, domainFilter, yearFilter, paymentFilter, activeBrand]);
+
+  const { paginatedItems: paginatedInterns, currentPage, setCurrentPage, totalItems } = usePagination(filteredInterns);
 
   // Handle offer letter generation
   const handleGenerateOfferLetter = async (intern: Intern & { id: string }) => {
@@ -507,7 +511,7 @@ export default function OfferLettersTab() {
                 </tr>
               </thead>
               <tbody>
-                {filteredInterns.map((intern) => (
+                {paginatedInterns.map((intern) => (
                   <tr key={intern.id} className={cn("border-t hover:bg-muted/30 transition-colors", selectedInterns.includes(intern.id) && "bg-primary/5")}>
                     <td className="p-3">
                       <Checkbox
@@ -566,6 +570,15 @@ export default function OfferLettersTab() {
             </table>
           </CardContent>
         </Card>
+      )}
+
+      {!isLoading && filteredInterns.length > 0 && (
+        <Pagination
+          currentPage={currentPage}
+          totalItems={totalItems}
+          pageSize={20}
+          onPageChange={setCurrentPage}
+        />
       )}
 
       {/* New Offer Letter Modal */}

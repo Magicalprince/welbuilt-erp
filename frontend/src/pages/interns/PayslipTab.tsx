@@ -26,8 +26,10 @@ import {
   Label,
   Select,
   Checkbox,
+  Pagination,
 } from "@/components/ui";
 import { cn } from "@/lib/utils";
+import { usePagination } from "@/hooks/usePagination";
 import { useInterns, useDeleteIntern, useBulkDeleteInterns, internQueryKeys } from "@/hooks/useInterns";
 import { useQueryClient } from "@tanstack/react-query";
 import type { Intern, InternPaymentStatus } from "@/types";
@@ -166,6 +168,8 @@ export default function PayslipTab() {
       return matchesSearch && matchesDomain && matchesYear && matchesPayment;
     });
   }, [interns, searchQuery, domainFilter, yearFilter, paymentFilter, activeBrand]);
+
+  const { paginatedItems: paginatedInterns, currentPage, setCurrentPage, totalItems } = usePagination(filteredInterns);
 
   // Handle download (for interns that already have payslip data)
   const handleDownloadPayslip = async (intern: Intern) => {
@@ -450,7 +454,7 @@ export default function PayslipTab() {
                       </tr>
                     </thead>
                     <tbody>
-                      {filteredInterns.map((intern) => {
+                      {paginatedInterns.map((intern) => {
                         const stipend = intern.stipend || 0;
                         const hasPayslipData = intern.numberOfMonths !== undefined || intern.paymentType !== undefined;
                         const months = intern.numberOfMonths || 1;
@@ -569,6 +573,15 @@ export default function PayslipTab() {
                 </div>
               </CardContent>
             </Card>
+          )}
+
+          {!isLoading && filteredInterns.length > 0 && (
+            <Pagination
+              currentPage={currentPage}
+              totalItems={totalItems}
+              pageSize={20}
+              onPageChange={setCurrentPage}
+            />
           )}
         </>
       ) : (

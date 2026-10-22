@@ -28,8 +28,10 @@ import {
   Label,
   Select,
   Checkbox,
+  Pagination,
 } from "@/components/ui";
 import { cn } from "@/lib/utils";
+import { usePagination } from "@/hooks/usePagination";
 import { useInterns, useCreateIntern, useUpdateIntern, useDeleteIntern, useBulkDeleteInterns, internQueryKeys } from "@/hooks/useInterns";
 import { useQueryClient } from "@tanstack/react-query";
 import type { Intern, InternPaymentStatus, InternDuration } from "@/types";
@@ -148,6 +150,12 @@ export default function CertificatesTab() {
       return matchesSearch && matchesDomain && matchesYear && matchesPayment;
     });
   }, [interns, searchQuery, domainFilter, yearFilter, paymentFilter]);
+
+  // Pagination operates on the render only — "Select All" and bulk actions
+  // deliberately keep working against the full filtered set (not just the
+  // visible page), since bulk-generating documents for every matching
+  // intern regardless of page is the useful behavior here.
+  const { paginatedItems: paginatedInterns, currentPage, setCurrentPage, totalItems } = usePagination(filteredInterns);
 
   // Handle certificate generation
   const handleGenerateCertificate = async (intern: Intern & { id: string }) => {
@@ -640,7 +648,7 @@ export default function CertificatesTab() {
                 </tr>
               </thead>
               <tbody>
-                {filteredInterns.map((intern) => (
+                {paginatedInterns.map((intern) => (
                   <tr key={intern.id} className={cn("border-t hover:bg-muted/30 transition-colors", selectedInterns.includes(intern.id) && "bg-primary/5")}>
                     <td className="p-3">
                       <Checkbox
@@ -698,6 +706,15 @@ export default function CertificatesTab() {
             </table>
           </CardContent>
         </Card>
+      )}
+
+      {!isLoading && filteredInterns.length > 0 && (
+        <Pagination
+          currentPage={currentPage}
+          totalItems={totalItems}
+          pageSize={20}
+          onPageChange={setCurrentPage}
+        />
       )}
 
       {/* New Certificate Modal */}
