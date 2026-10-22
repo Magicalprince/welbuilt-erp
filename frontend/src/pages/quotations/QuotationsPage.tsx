@@ -26,7 +26,9 @@ import {
   Badge,
   Skeleton,
   Modal,
+  Pagination,
 } from "@/components/ui";
+import { usePagination } from "@/hooks/usePagination";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   getAllQuotations,
@@ -152,6 +154,8 @@ export default function QuotationsPage() {
     });
   }, [quotations, searchQuery, statusFilter, clientMap]);
 
+  const { paginatedItems: paginatedQuotations, currentPage, setCurrentPage, totalItems } = usePagination(filtered);
+
   const stats = useMemo(() => {
     if (!quotations) return { total: 0, accepted: 0, pending: 0, totalValue: 0 };
     return {
@@ -253,7 +257,7 @@ export default function QuotationsPage() {
         </div>
       ) : (
         <div className="space-y-3">
-          {filtered.map((q) => {
+          {paginatedQuotations.map((q) => {
             const cfg = statusConfig(q.status);
             const clientName = clientMap[q.clientId] || "Unknown Client";
             const projectName = q.projectId ? projectMap[q.projectId] : null;
@@ -340,6 +344,15 @@ export default function QuotationsPage() {
             );
           })}
         </div>
+      )}
+
+      {!isLoading && filtered.length > 0 && (
+        <Pagination
+          currentPage={currentPage}
+          totalItems={totalItems}
+          pageSize={20}
+          onPageChange={setCurrentPage}
+        />
       )}
 
       {/* Upload / Add Quotation Modal */}
