@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { Link } from "react-router-dom";
-import { ArrowLeft, Plus, Wallet, Loader2, Trash2 } from "lucide-react";
+import { ArrowLeft, Plus, Wallet, Loader2, Trash2, Search, Download, X } from "lucide-react";
 import {
   Button,
   Card,
@@ -14,12 +14,16 @@ import {
   Textarea,
   Badge,
   Skeleton,
+  Pagination,
+  DateRangeFilter,
 } from "@/components/ui";
-import { formatCurrency, formatDate } from "@/lib/utils";
+import { formatCurrency, formatDate, isWithinDateRange, EMPTY_DATE_RANGE, type DateRange } from "@/lib/utils";
 import { useIncomes, useCreateIncome, useDeleteIncome, useClients, useProjects } from "@/hooks/useFirestore";
+import { usePagination } from "@/hooks/usePagination";
 import { useAuthStore } from "@/store/authStore";
 import type { IncomeCategory } from "@/types";
 import toast from "react-hot-toast";
+import { generateAndDownloadFinanceStatementPdf, incomeToStatementRows } from "@/services/financeStatementPdfService";
 
 const categoryOptions: { value: IncomeCategory; label: string }[] = [
   { value: "PROJECT_PAYMENT", label: "Project Payment" },
@@ -48,6 +52,9 @@ export default function IncomePage() {
   const [clientId, setClientId] = useState("");
   const [projectId, setProjectId] = useState("");
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [dateRange, setDateRange] = useState<DateRange>(EMPTY_DATE_RANGE);
+  const [isExporting, setIsExporting] = useState(false);
 
   const { user } = useAuthStore();
   const { data: incomes, isLoading } = useIncomes();
@@ -56,18 +63,80 @@ export default function IncomePage() {
   const createIncomeMutation = useCreateIncome();
   const deleteIncomeMutation = useDeleteIncome();
 
+  const clientNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    clients?.forEach((c) => map.set(c.id, c.companyName));
+    return map;
+  }, [clients]);
+
+  const projectTitleById = useMemo(() => {
+    const map = new Map<string, string>();
+    projects?.forEach((p) => map.set(p.id, p.title));
+    return map;
+  }, [projects]);
+
+  const getClientName = (id?: string) => (id ? clientNameById.get(id) : undefined);
+  const getProjectTitle = (id?: string) => (id ? projectTitleById.get(id) : undefined);
+
+  const filteredIncomes = useMemo(() => {
+    if (!incomes) return [];
+    const query = searchQuery.trim().toLowerCase();
+    return incomes.filter((income) => {
+      const matchesSearch =
+        !query ||
+        income.description.toLowerCase().includes(query) ||
+        (clientNameById.get(income.clientId || "") || "").toLowerCase().includes(query) ||
+        (projectTitleById.get(income.projectId || "") || "").toLowerCase().includes(query);
+      const matchesDate = isWithinDateRange(income.date, dateRange.from, dateRange.to);
+      return matchesSearch && matchesDate;
+    });
+  }, [incomes, searchQuery, dateRange, clientNameById, projectTitleById]);
+
+  const { paginatedItems: paginatedIncomes, currentPage, setCurrentPage, totalItems } = usePagination(filteredIncomes);
+
+  const hasActiveFilters = !!searchQuery || !!dateRange.from || !!dateRange.to;
+
+  const handleClearFilters = () => {
+    setSearchQuery("");
+    setDateRange(EMPTY_DATE_RANGE);
+  };
+
+  const getCategoryLabel = (cat: IncomeCategory) =>
+    categoryOptions.find((c) => c.value === cat)?.label || cat;
+
+  const handleExportPdf = async () => {
+    setIsExporting(true);
+    try {
+      const dateRangeLabel =
+        dateRange.from || dateRange.to
+          ? `${dateRange.from ? formatDate(dateRange.from) : "Start"} – ${dateRange.to ? formatDate(dateRange.to) : "Now"}`
+          : undefined;
+      await generateAndDownloadFinanceStatementPdf(
+        {
+          title: "Income Statement",
+          dateRangeLabel,
+          income: incomeToStatementRows(filteredIncomes, getCategoryLabel),
+        },
+        `Income_Statement_${new Date().toISOString().split("T")[0]}.pdf`
+      );
+    } catch (error) {
+      console.error("Error exporting income PDF:", error);
+      toast.error("Failed to export PDF");
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   const totalIncome = useMemo(() => {
-    if (!incomes) return 0;
-    return incomes.reduce((sum, i) => sum + i.amount, 0);
-  }, [incomes]);
+    return filteredIncomes.reduce((sum, i) => sum + i.amount, 0);
+  }, [filteredIncomes]);
 
   const incomeByCategory = useMemo(() => {
-    if (!incomes) return {};
-    return incomes.reduce((acc, income) => {
+    return filteredIncomes.reduce((acc, income) => {
       acc[income.category] = (acc[income.category] || 0) + income.amount;
       return acc;
     }, {} as Record<string, number>);
-  }, [incomes]);
+  }, [filteredIncomes]);
 
   const handleOpenModal = () => {
     setDescription("");
@@ -114,18 +183,6 @@ export default function IncomePage() {
     }
   };
 
-  const getClientName = (id?: string) => {
-    if (!id || !clients) return null;
-    const client = clients.find((c) => c.id === id);
-    return client?.companyName;
-  };
-
-  const getProjectTitle = (id?: string) => {
-    if (!id || !projects) return null;
-    const project = projects.find((p) => p.id === id);
-    return project?.title;
-  };
-
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -141,10 +198,36 @@ export default function IncomePage() {
             <p className="text-muted-foreground">Track non-invoice income (intern payments, advances, etc.)</p>
           </div>
         </div>
-        <Button onClick={handleOpenModal}>
-          <Plus className="h-4 w-4 mr-2" />
-          Add Income
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={handleExportPdf} disabled={isExporting || filteredIncomes.length === 0}>
+            <Download className="h-4 w-4 mr-2" />
+            {isExporting ? "Generating..." : "Export PDF"}
+          </Button>
+          <Button onClick={handleOpenModal}>
+            <Plus className="h-4 w-4 mr-2" />
+            Add Income
+          </Button>
+        </div>
+      </div>
+
+      {/* Filters */}
+      <div className="flex flex-col md:flex-row gap-3 md:items-center">
+        <div className="relative flex-1 max-w-md">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Search income..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-10"
+          />
+        </div>
+        <DateRangeFilter value={dateRange} onChange={setDateRange} />
+        {hasActiveFilters && (
+          <Button variant="ghost" size="sm" onClick={handleClearFilters}>
+            <X className="h-4 w-4 mr-1" />
+            Clear filters
+          </Button>
+        )}
       </div>
 
       {/* Summary Cards */}
@@ -182,9 +265,9 @@ export default function IncomePage() {
                 <Skeleton key={i} className="h-16 w-full" />
               ))}
             </div>
-          ) : incomes && incomes.length > 0 ? (
+          ) : filteredIncomes.length > 0 ? (
             <div className="space-y-3">
-              {incomes.map((income) => (
+              {paginatedIncomes.map((income) => (
                 <div
                   key={income.id}
                   className="flex items-center justify-between p-4 rounded-lg border hover:bg-accent/50 transition-colors"
@@ -222,9 +305,17 @@ export default function IncomePage() {
                 </div>
               ))}
             </div>
+          ) : hasActiveFilters ? (
+            <p className="text-center py-8 text-muted-foreground">No income matches your filters</p>
           ) : (
             <p className="text-center py-8 text-muted-foreground">No income recorded yet</p>
           )}
+          <Pagination
+            currentPage={currentPage}
+            totalItems={totalItems}
+            pageSize={20}
+            onPageChange={setCurrentPage}
+          />
         </CardContent>
       </Card>
 
