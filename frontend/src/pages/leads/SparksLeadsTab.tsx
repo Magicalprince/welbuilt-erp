@@ -25,8 +25,10 @@ import {
   Label,
   Select,
   Textarea,
+  Pagination,
 } from "@/components/ui";
 import { cn, formatCurrency, formatDate, getRelativeTime } from "@/lib/utils";
+import { usePagination } from "@/hooks/usePagination";
 import {
   useSparksLeads,
   useReferrers,
@@ -166,6 +168,13 @@ export default function SparksLeadsTab() {
       return b.createdAt.getTime() - a.createdAt.getTime();
     });
   }, [leads, searchQuery, statusFilter, sourceFilter]);
+
+  const {
+    paginatedItems: paginatedLeads,
+    currentPage: leadsCurrentPage,
+    setCurrentPage: setLeadsCurrentPage,
+    totalItems: totalLeadsCount,
+  } = usePagination(filteredLeads);
 
   const handleDelete = async () => {
     if (!deleteConfirm) return;
@@ -336,7 +345,7 @@ export default function SparksLeadsTab() {
                 </tr>
               </thead>
               <tbody>
-                {filteredLeads.map((lead) => {
+                {paginatedLeads.map((lead) => {
                   const overdue = isOverdue(lead);
                   return (
                     <tr
@@ -398,6 +407,15 @@ export default function SparksLeadsTab() {
             </table>
           </CardContent>
         </Card>
+      )}
+
+      {!isLoading && filteredLeads.length > 0 && (
+        <Pagination
+          currentPage={leadsCurrentPage}
+          totalItems={totalLeadsCount}
+          pageSize={20}
+          onPageChange={setLeadsCurrentPage}
+        />
       )}
       </>
       )}
@@ -794,6 +812,8 @@ function WebsiteEnquiriesView({ onOpen }: { onOpen: (enquiry: SparksEnquiry) => 
     });
   }, [enquiries, searchQuery, statusFilter]);
 
+  const { paginatedItems: paginatedEnquiries, currentPage, setCurrentPage, totalItems } = usePagination(filtered);
+
   if (error) {
     return (
       <div className="text-center py-12">
@@ -844,7 +864,7 @@ function WebsiteEnquiriesView({ onOpen }: { onOpen: (enquiry: SparksEnquiry) => 
           <CardContent className="p-0">
             <table className="w-full">
               <tbody>
-                {filtered.map((enquiry) => (
+                {paginatedEnquiries.map((enquiry) => (
                   <tr
                     key={enquiry.id}
                     className="border-t first:border-t-0 hover:bg-muted/30 transition-colors cursor-pointer"
@@ -872,6 +892,15 @@ function WebsiteEnquiriesView({ onOpen }: { onOpen: (enquiry: SparksEnquiry) => 
             </table>
           </CardContent>
         </Card>
+      )}
+
+      {!isLoading && filtered.length > 0 && (
+        <Pagination
+          currentPage={currentPage}
+          totalItems={totalItems}
+          pageSize={20}
+          onPageChange={setCurrentPage}
+        />
       )}
     </div>
   );

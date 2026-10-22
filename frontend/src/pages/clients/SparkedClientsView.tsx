@@ -2,8 +2,9 @@ import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { GraduationCap, MapPin, Phone, Building2, FileSignature, Users, IndianRupee } from "lucide-react";
-import { Card, CardContent, Badge, Skeleton, Button, DonutChart, ChartLegend, ChartColors } from "@/components/ui";
+import { Card, CardContent, Badge, Skeleton, Button, DonutChart, ChartLegend, ChartColors, Pagination } from "@/components/ui";
 import { formatCurrency } from "@/lib/utils";
+import { usePagination } from "@/hooks/usePagination";
 import { useSparkedConvertedColleges, useSparkedAnalytics } from "@/hooks/useLeads";
 import { SPARKED_DEPT_STATUS_LABELS, WORKSHOP_EXPENSE_CATEGORY_LABELS } from "@/types";
 import CollegeDetailView from "@/pages/leads/CollegeDetailView";
@@ -208,6 +209,8 @@ function SparkedCollegeGrid({ onOpenCollege }: { onOpenCollege: (collegeId: stri
     });
   }, [colleges]);
 
+  const { paginatedItems: paginatedCards, currentPage, setCurrentPage, totalItems } = usePagination(cards);
+
   if (isLoading) {
     return (
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
@@ -234,8 +237,9 @@ function SparkedCollegeGrid({ onOpenCollege }: { onOpenCollege: (collegeId: stri
   }
 
   return (
+    <>
     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-      {cards.map((c, index) => (
+      {paginatedCards.map((c, index) => (
         <motion.div
           key={c.college.id}
           initial={{ opacity: 0, y: 20 }}
@@ -302,5 +306,12 @@ function SparkedCollegeGrid({ onOpenCollege }: { onOpenCollege: (collegeId: stri
         </motion.div>
       ))}
     </div>
+    <Pagination
+      currentPage={currentPage}
+      totalItems={totalItems}
+      pageSize={20}
+      onPageChange={setCurrentPage}
+    />
+    </>
   );
 }

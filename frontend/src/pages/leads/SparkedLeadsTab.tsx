@@ -1,7 +1,8 @@
 import { useState, useMemo } from "react";
 import { motion } from "framer-motion";
 import { Plus, Search, Loader2, Building2, Trash2, MapPin } from "lucide-react";
-import { Button, Input, Card, CardContent, Skeleton, Modal, Label, Textarea } from "@/components/ui";
+import { Button, Input, Card, CardContent, Skeleton, Modal, Label, Textarea, Pagination } from "@/components/ui";
+import { usePagination } from "@/hooks/usePagination";
 import { useSparkedCollegesWithDepts, useCreateCollege, useDeleteCollege } from "@/hooks/useLeads";
 import type { SparkedCollegeWithDepts, SparkedDepartment, SparkedDeptStatus } from "@/types";
 import { SPARKED_DEPT_STATUS_LABELS } from "@/types";
@@ -42,6 +43,8 @@ export default function SparkedLeadsTab() {
         c.college.address.toLowerCase().includes(q)
     );
   }, [colleges, searchQuery]);
+
+  const { paginatedItems: paginatedColleges, currentPage, setCurrentPage, totalItems } = usePagination(filteredColleges);
 
   const handleDelete = async () => {
     if (!deleteConfirm) return;
@@ -113,7 +116,7 @@ export default function SparkedLeadsTab() {
         </div>
       ) : (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {filteredColleges.map((c, index) => (
+          {paginatedColleges.map((c, index) => (
             <motion.div
               key={c.college.id}
               initial={{ opacity: 0, y: 20 }}
@@ -158,6 +161,15 @@ export default function SparkedLeadsTab() {
             </motion.div>
           ))}
         </div>
+      )}
+
+      {!isLoading && filteredColleges.length > 0 && (
+        <Pagination
+          currentPage={currentPage}
+          totalItems={totalItems}
+          pageSize={20}
+          onPageChange={setCurrentPage}
+        />
       )}
 
       <NewCollegeModal isOpen={isNewCollegeOpen} onClose={() => setIsNewCollegeOpen(false)} />
