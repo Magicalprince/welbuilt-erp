@@ -1,7 +1,8 @@
 import { useState, useMemo } from "react";
 import { Plus, Search, Pin, CheckSquare, Trash2, Edit, X } from "lucide-react";
-import { Button, Input, Card, CardContent, Badge, Skeleton, Modal, Textarea, Select } from "@/components/ui";
+import { Button, Input, Card, CardContent, Badge, Skeleton, Modal, Textarea, Select, Pagination } from "@/components/ui";
 import { getRelativeTime, cn } from "@/lib/utils";
+import { usePagination } from "@/hooks/usePagination";
 import {
   useNotes,
   useCreateNote,
@@ -78,6 +79,8 @@ export default function NotesPage() {
       })
       .sort((a, b) => (a.isPinned === b.isPinned ? 0 : a.isPinned ? -1 : 1));
   }, [notes, searchQuery, showPinnedOnly]);
+
+  const { paginatedItems: paginatedNotes, currentPage, setCurrentPage, totalItems } = usePagination(filteredNotes);
 
   const handleOpenModal = (note?: Note) => {
     if (note) {
@@ -279,7 +282,7 @@ export default function NotesPage() {
         </div>
       ) : (
         <div className="space-y-4">
-          {filteredNotes.map((note) => (
+          {paginatedNotes.map((note) => (
             <NoteCard
               key={note.id}
               note={note}
@@ -291,6 +294,15 @@ export default function NotesPage() {
             />
           ))}
         </div>
+      )}
+
+      {!isLoading && !error && filteredNotes.length > 0 && (
+        <Pagination
+          currentPage={currentPage}
+          totalItems={totalItems}
+          pageSize={20}
+          onPageChange={setCurrentPage}
+        />
       )}
 
       {/* Create/Edit Note Modal */}

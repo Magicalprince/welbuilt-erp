@@ -17,7 +17,9 @@ import {
   CardTitle,
   Select,
   Badge,
+  Pagination,
 } from "@/components/ui";
+import { usePagination } from "@/hooks/usePagination";
 import { useExpenses, useIncomes, useInvoices, useClients, useProjects } from "@/hooks/useFirestore";
 import { useQuery } from "@tanstack/react-query";
 import { getInterns } from "@/services/internService";
@@ -92,6 +94,13 @@ export default function ReportsPage() {
       .sort((a, b) => b.revenue - a.revenue);
   }, [clients, incomes, projects, invoices]);
 
+  const {
+    paginatedItems: paginatedClientRevenue,
+    currentPage: clientRevenuePage,
+    setCurrentPage: setClientRevenuePage,
+    totalItems: totalClientRevenue,
+  } = usePagination(clientRevenue);
+
   // ── Intern Summary ─────────────────────────────────────────
   const internSummary = useMemo(() => {
     if (!interns) return { total: 0, paid: 0, unpaid: 0, domains: {} as Record<string, number>, totalStipend: 0 };
@@ -110,6 +119,13 @@ export default function ReportsPage() {
     };
   }, [interns]);
 
+  const {
+    paginatedItems: paginatedInterns,
+    currentPage: internsPage,
+    setCurrentPage: setInternsPage,
+    totalItems: totalInternsCount,
+  } = usePagination(interns || []);
+
   // ── Invoice Summary ────────────────────────────────────────
   const invoiceSummary = useMemo(() => {
     if (!invoices) return { total: 0, paid: 0, pending: 0, overdue: 0, totalValue: 0, paidValue: 0 };
@@ -122,6 +138,13 @@ export default function ReportsPage() {
       paidValue: invoices.reduce((s, i) => s + i.paidAmount, 0),
     };
   }, [invoices]);
+
+  const {
+    paginatedItems: paginatedInvoices,
+    currentPage: invoicesPage,
+    setCurrentPage: setInvoicesPage,
+    totalItems: totalInvoicesCount,
+  } = usePagination(invoices || []);
 
   // ── Month P&L Detail ───────────────────────────────────────
   const monthIdx = parseInt(selectedMonth);
@@ -428,7 +451,7 @@ export default function ReportsPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {clientRevenue.map((c) => (
+                    {paginatedClientRevenue.map((c) => (
                       <tr key={c.id} className="border-t hover:bg-muted/30">
                         <td className="p-3 font-medium">{c.name}</td>
                         <td className="p-3">
@@ -450,6 +473,16 @@ export default function ReportsPage() {
                     </tr>
                   </tbody>
                 </table>
+              )}
+              {clientRevenue.length > 0 && (
+                <div className="p-4">
+                  <Pagination
+                    currentPage={clientRevenuePage}
+                    totalItems={totalClientRevenue}
+                    pageSize={20}
+                    onPageChange={setClientRevenuePage}
+                  />
+                </div>
               )}
             </CardContent>
           </Card>
@@ -527,7 +560,7 @@ export default function ReportsPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {(interns || []).map((i) => (
+                    {paginatedInterns.map((i) => (
                       <tr key={i.id} className="border-t hover:bg-muted/30">
                         <td className="p-3 font-mono text-xs">{i.internId}</td>
                         <td className="p-3 font-medium">{i.name}</td>
@@ -545,6 +578,16 @@ export default function ReportsPage() {
                   </tbody>
                 </table>
               </div>
+              {totalInternsCount > 0 && (
+                <div className="p-4">
+                  <Pagination
+                    currentPage={internsPage}
+                    totalItems={totalInternsCount}
+                    pageSize={20}
+                    onPageChange={setInternsPage}
+                  />
+                </div>
+              )}
             </CardContent>
           </Card>
         </motion.div>
@@ -607,7 +650,7 @@ export default function ReportsPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {(invoices || []).map((inv) => {
+                    {paginatedInvoices.map((inv) => {
                       const clientName = clients?.find((c) => c.id === inv.clientId)?.companyName || inv.clientId;
                       return (
                         <tr key={inv.id} className="border-t hover:bg-muted/30">
@@ -634,6 +677,16 @@ export default function ReportsPage() {
                   </tbody>
                 </table>
               </div>
+              {totalInvoicesCount > 0 && (
+                <div className="p-4">
+                  <Pagination
+                    currentPage={invoicesPage}
+                    totalItems={totalInvoicesCount}
+                    pageSize={20}
+                    onPageChange={setInvoicesPage}
+                  />
+                </div>
+              )}
             </CardContent>
           </Card>
         </motion.div>

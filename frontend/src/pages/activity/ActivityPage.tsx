@@ -29,7 +29,9 @@ import {
   Badge,
   Skeleton,
   Select,
+  Pagination,
 } from "@/components/ui";
+import { usePagination } from "@/hooks/usePagination";
 import { useRecentActivityLogs, useInternActivityLogs } from "@/hooks/useFirestore";
 import { useAuthStore } from "@/store/authStore";
 import type { ActivityLog } from "@/types";
@@ -164,6 +166,13 @@ export default function ActivityPage() {
     });
     return groups;
   }, [filteredActivities]);
+
+  const {
+    paginatedItems: paginatedInternActivities,
+    currentPage: internAuditPage,
+    setCurrentPage: setInternAuditPage,
+    totalItems: totalInternActivities,
+  } = usePagination(internActivities || []);
 
   const exportInternAuditCSV = () => {
     if (!internActivities?.length) return;
@@ -365,7 +374,7 @@ export default function ActivityPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {internActivities.map((log) => (
+                      {paginatedInternActivities.map((log) => (
                         <tr key={log.id} className="border-t hover:bg-muted/30 transition-colors">
                           <td className="p-3 text-xs text-muted-foreground whitespace-nowrap">
                             {log.createdAt.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}
@@ -391,6 +400,14 @@ export default function ActivityPage() {
                       ))}
                     </tbody>
                   </table>
+                  {internActivities.length > 0 && (
+                    <Pagination
+                      currentPage={internAuditPage}
+                      totalItems={totalInternActivities}
+                      pageSize={20}
+                      onPageChange={setInternAuditPage}
+                    />
+                  )}
                 </div>
               )}
             </CardContent>
