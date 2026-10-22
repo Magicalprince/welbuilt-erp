@@ -14,6 +14,8 @@ import {
   BarChart3,
   ArrowUpRight,
   Building2,
+  Download,
+  FileSpreadsheet,
 } from "lucide-react";
 import {
   Card,
@@ -32,12 +34,41 @@ import {
   HorizontalBarChart,
   ChartLegend,
   ChartColors,
+  DateRangeFilter,
 } from "@/components/ui";
-import { formatCurrency } from "@/lib/utils";
-import { useFinancialSummary, useFounderFinances, useInvoices, useClients, useExpenses } from "@/hooks/useFirestore";
+import { formatCurrency, formatDate, isWithinDateRange, EMPTY_DATE_RANGE, type DateRange } from "@/lib/utils";
+import { useFinancialSummary, useFounderFinances, useInvoices, useClients, useExpenses, useIncomes } from "@/hooks/useFirestore";
 import { useFinancialHistory } from "@/hooks/useFinancialHistory";
 import ExpandedChartOverlay from "@/components/finance/ExpandedChartOverlay";
-import type { InvoiceStatus } from "@/types";
+import type { InvoiceStatus, IncomeCategory, ExpenseCategory } from "@/types";
+import {
+  generateAndDownloadFinanceStatementPdf,
+  incomeToStatementRows,
+  expensesToStatementRows,
+} from "@/services/financeStatementPdfService";
+import toast from "react-hot-toast";
+
+const incomeCategoryLabels: Record<IncomeCategory, string> = {
+  PROJECT_PAYMENT: "Project Payment",
+  INTERN_PAYMENT: "Intern Payment",
+  TESTING_FEE: "Testing Fee",
+  CERTIFICATE_FEE: "Certificate Fee",
+  ADVANCE: "Advance Payment",
+  OTHER: "Other",
+};
+
+const expenseCategoryLabels: Record<ExpenseCategory, string> = {
+  TOOLS: "Software & Tools",
+  HOSTING: "Hosting & Infrastructure",
+  APIS: "APIs & Services",
+  MARKETING: "Marketing",
+  TRAVEL: "Travel",
+  OFFICE: "Office Supplies",
+  UTILITIES: "Utilities",
+  SALARIES: "Salaries",
+  FOUNDER_WITHDRAWAL: "Founder Withdrawal",
+  OTHER: "Other",
+};
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -58,8 +89,41 @@ export default function FinancePage() {
   const { data: invoices, isLoading: loadingInvoices } = useInvoices();
   const { data: clients } = useClients();
   const { data: expenses } = useExpenses();
+  const { data: incomes } = useIncomes();
   const { recentHistory, fullHistory } = useFinancialHistory();
   const [isChartExpanded, setIsChartExpanded] = useState(false);
+  const [statementRange, setStatementRange] = useState<DateRange>(EMPTY_DATE_RANGE);
+  const [isExportingStatement, setIsExportingStatement] = useState(false);
+
+  const handleExportCombinedStatement = async () => {
+    setIsExportingStatement(true);
+    try {
+      const filteredIncomes = (incomes || []).filter((i) =>
+        isWithinDateRange(i.date, statementRange.from, statementRange.to)
+      );
+      const filteredExpenses = (expenses || []).filter((e) =>
+        isWithinDateRange(e.date, statementRange.from, statementRange.to)
+      );
+      const dateRangeLabel =
+        statementRange.from || statementRange.to
+          ? `${statementRange.from ? formatDate(statementRange.from) : "Start"} – ${statementRange.to ? formatDate(statementRange.to) : "Now"}`
+          : undefined;
+      await generateAndDownloadFinanceStatementPdf(
+        {
+          title: "Income & Expense Statement",
+          dateRangeLabel,
+          income: incomeToStatementRows(filteredIncomes, (cat) => incomeCategoryLabels[cat] || cat),
+          expenses: expensesToStatementRows(filteredExpenses, (cat) => expenseCategoryLabels[cat] || cat),
+        },
+        `Income_Expense_Statement_${new Date().toISOString().split("T")[0]}.pdf`
+      );
+    } catch (error) {
+      console.error("Error exporting combined statement:", error);
+      toast.error("Failed to export statement");
+    } finally {
+      setIsExportingStatement(false);
+    }
+  };
 
   // Create client name map
   const clientMap = useMemo(() => {
@@ -359,6 +423,34 @@ export default function FinancePage() {
             </Card>
           )}
         </div>
+      </motion.div>
+
+      {/* Combined Statement Export */}
+      <motion.div variants={itemVariants}>
+        <Card className="glass-card border-border/50">
+          <CardContent className="p-6">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center">
+                  <FileSpreadsheet className="h-5 w-5 text-primary" />
+                </div>
+                <div>
+                  <p className="font-semibold">Income & Expense Statement</p>
+                  <p className="text-sm text-muted-foreground">
+                    Export a combined, filing-ready PDF for a date range (or all time)
+                  </p>
+                </div>
+              </div>
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                <DateRangeFilter value={statementRange} onChange={setStatementRange} />
+                <Button onClick={handleExportCombinedStatement} disabled={isExportingStatement}>
+                  <Download className="h-4 w-4 mr-2" />
+                  {isExportingStatement ? "Generating..." : "Export Statement"}
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       </motion.div>
 
       {/* Quick Actions & Recent Invoices */}
