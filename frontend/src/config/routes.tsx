@@ -30,6 +30,11 @@ import InvoiceFormPage from "@/pages/finance/InvoiceFormPage";
 import ExpensesPage from "@/pages/finance/ExpensesPage";
 import IncomePage from "@/pages/finance/IncomePage";
 import WithdrawalsPage from "@/pages/finance/WithdrawalsPage";
+import ProformasPage from "@/pages/finance/ProformasPage";
+import ProformaDetailPage from "@/pages/finance/ProformaDetailPage";
+import ProformaFormPage from "@/pages/finance/ProformaFormPage";
+import RecurringTemplatesPage from "@/pages/finance/RecurringTemplatesPage";
+import RecurringTemplateFormPage from "@/pages/finance/RecurringTemplateFormPage";
 
 // Other Pages
 import DocumentsPage from "@/pages/documents/DocumentsPage";
@@ -139,6 +144,34 @@ export const router = createBrowserRouter([
       {
         path: "finance/withdrawals",
         element: <WithdrawalsPage />,
+      },
+      {
+        path: "finance/proformas",
+        element: <ProformasPage />,
+      },
+      {
+        path: "finance/proformas/new",
+        element: <ProformaFormPage />,
+      },
+      {
+        path: "finance/proformas/:id",
+        element: <ProformaDetailPage />,
+      },
+      {
+        path: "finance/proformas/:id/edit",
+        element: <ProformaFormPage />,
+      },
+      {
+        path: "finance/recurring",
+        element: <RecurringTemplatesPage />,
+      },
+      {
+        path: "finance/recurring/new",
+        element: <RecurringTemplateFormPage />,
+      },
+      {
+        path: "finance/recurring/:id/edit",
+        element: <RecurringTemplateFormPage />,
       },
       // Documents
       {

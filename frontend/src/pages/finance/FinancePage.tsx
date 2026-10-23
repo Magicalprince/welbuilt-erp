@@ -16,6 +16,8 @@ import {
   Building2,
   Download,
   FileSpreadsheet,
+  FileText,
+  Repeat,
 } from "lucide-react";
 import {
   Card,
@@ -472,6 +474,12 @@ export default function FinancePage() {
             <Link to="/finance/withdrawals">
               <QuickActionCard icon={Wallet} label="Withdrawals" color="purple" />
             </Link>
+            <Link to="/finance/proformas">
+              <QuickActionCard icon={FileText} label="Proformas" color="blue" />
+            </Link>
+            <Link to="/finance/recurring">
+              <QuickActionCard icon={Repeat} label="Recurring" color="teal" />
+            </Link>
           </CardContent>
         </Card>
 
@@ -589,6 +597,8 @@ function QuickActionCard({ icon: Icon, label, color }: { icon: React.ElementType
     success: { bg: "bg-green-500/10", text: "text-green-500" },
     danger: { bg: "bg-red-500/10", text: "text-red-500" },
     purple: { bg: "bg-purple-500/10", text: "text-purple-500" },
+    blue: { bg: "bg-blue-500/10", text: "text-blue-500" },
+    teal: { bg: "bg-teal-500/10", text: "text-teal-500" },
   };
   const colors = colorMap[color] || colorMap.gold;
 
