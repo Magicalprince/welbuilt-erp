@@ -6,6 +6,8 @@ import type {
   ProjectStatus,
   Invoice,
   InvoiceStatus,
+  ProformaInvoice,
+  RecurringInvoiceTemplate,
   Expense,
   ExpenseCategory,
   Income,
@@ -49,6 +51,15 @@ export const queryKeys = {
   invoicesByProject: (projectId: string) => ["invoices", "project", projectId] as const,
   invoicesByStatus: (status: InvoiceStatus) => ["invoices", "status", status] as const,
   pendingPaymentsTotal: ["invoices", "pendingTotal"] as const,
+
+  // Proforma Invoices
+  proformas: ["proformas"] as const,
+  proforma: (id: string) => ["proformas", id] as const,
+  proformasByClient: (clientId: string) => ["proformas", "client", clientId] as const,
+
+  // Recurring Invoice Templates
+  recurringTemplates: ["recurringTemplates"] as const,
+  recurringTemplate: (id: string) => ["recurringTemplates", id] as const,
 
   // Expenses
   expenses: ["expenses"] as const,
@@ -595,6 +606,228 @@ export function useDeleteInvoice() {
       return deleteInvoice(invoiceId);
     },
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.invoices });
+      queryClient.invalidateQueries({ queryKey: queryKeys.financialSummary });
+      queryClient.invalidateQueries({ queryKey: queryKeys.founderFinances });
+      queryClient.invalidateQueries({ queryKey: queryKeys.pendingPaymentsTotal });
+    },
+  });
+}
+
+// ============================================
+// Proforma Invoice Hooks
+// ============================================
+// Proformas are estimates, not financial commitments — unlike the
+// invoice mutations above, these deliberately do NOT invalidate
+// financialSummary/founderFinances/pendingPaymentsTotal, since nothing
+// about a proforma's existence affects actual cash-flow numbers.
+
+export function useProformas() {
+  return useQuery({
+    queryKey: queryKeys.proformas,
+    queryFn: async () => {
+      const { getAllProformas } = await import("@/services/proformaInvoiceService");
+      return getAllProformas();
+    },
+  });
+}
+
+export function useProforma(proformaId: string) {
+  return useQuery({
+    queryKey: queryKeys.proforma(proformaId),
+    queryFn: async () => {
+      const { getProformaById } = await import("@/services/proformaInvoiceService");
+      return getProformaById(proformaId);
+    },
+    enabled: !!proformaId,
+  });
+}
+
+export function useProformasByClient(clientId: string) {
+  return useQuery({
+    queryKey: queryKeys.proformasByClient(clientId),
+    queryFn: async () => {
+      const { getProformasByClient } = await import("@/services/proformaInvoiceService");
+      return getProformasByClient(clientId);
+    },
+    enabled: !!clientId,
+  });
+}
+
+export function useCreateProforma() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (
+      data: Omit<ProformaInvoice, "id" | "proformaNumber" | "createdAt" | "updatedAt" | "convertedToInvoiceId">
+    ) => {
+      const { createProforma } = await import("@/services/proformaInvoiceService");
+      return createProforma(data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.proformas });
+    },
+  });
+}
+
+export function useUpdateProforma() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      proformaId,
+      data,
+    }: {
+      proformaId: string;
+      data: Partial<
+        Omit<
+          ProformaInvoice,
+          "id" | "createdAt" | "updatedAt" | "cgstPercent" | "sgstPercent" | "igstPercent" | "cgstAmount" | "sgstAmount" | "igstAmount"
+        >
+      > & {
+        cgstPercent?: number | null;
+        sgstPercent?: number | null;
+        igstPercent?: number | null;
+        cgstAmount?: number | null;
+        sgstAmount?: number | null;
+        igstAmount?: number | null;
+      };
+    }) => {
+      const { updateProforma } = await import("@/services/proformaInvoiceService");
+      return updateProforma(proformaId, data);
+    },
+    onSuccess: (_, { proformaId }) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.proforma(proformaId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.proformas });
+    },
+  });
+}
+
+export function useDeleteProforma() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (proformaId: string) => {
+      const { deleteProforma } = await import("@/services/proformaInvoiceService");
+      return deleteProforma(proformaId);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.proformas });
+    },
+  });
+}
+
+export function useConvertProformaToInvoice() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (proformaId: string) => {
+      const { convertProformaToInvoice } = await import("@/services/proformaInvoiceService");
+      return convertProformaToInvoice(proformaId);
+    },
+    onSuccess: (_, proformaId) => {
+      // This mutation DOES create a real invoice, so unlike the other
+      // proforma mutations it invalidates the invoice + financial query
+      // keys too, matching useCreateInvoice's invalidation set.
+      queryClient.invalidateQueries({ queryKey: queryKeys.proforma(proformaId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.proformas });
+      queryClient.invalidateQueries({ queryKey: queryKeys.invoices });
+      queryClient.invalidateQueries({ queryKey: queryKeys.financialSummary });
+      queryClient.invalidateQueries({ queryKey: queryKeys.founderFinances });
+      queryClient.invalidateQueries({ queryKey: queryKeys.pendingPaymentsTotal });
+    },
+  });
+}
+
+// ============================================
+// Recurring Invoice Template Hooks
+// ============================================
+
+export function useRecurringTemplates() {
+  return useQuery({
+    queryKey: queryKeys.recurringTemplates,
+    queryFn: async () => {
+      const { getAllTemplates } = await import("@/services/recurringInvoiceService");
+      return getAllTemplates();
+    },
+  });
+}
+
+export function useRecurringTemplate(templateId: string) {
+  return useQuery({
+    queryKey: queryKeys.recurringTemplate(templateId),
+    queryFn: async () => {
+      const { getTemplateById } = await import("@/services/recurringInvoiceService");
+      return getTemplateById(templateId);
+    },
+    enabled: !!templateId,
+  });
+}
+
+export function useCreateRecurringTemplate() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (
+      data: Omit<RecurringInvoiceTemplate, "id" | "createdAt" | "updatedAt" | "lastGeneratedPeriod" | "lastGeneratedInvoiceId">
+    ) => {
+      const { createTemplate } = await import("@/services/recurringInvoiceService");
+      return createTemplate(data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.recurringTemplates });
+    },
+  });
+}
+
+export function useUpdateRecurringTemplate() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      templateId,
+      data,
+    }: {
+      templateId: string;
+      data: Partial<Omit<RecurringInvoiceTemplate, "id" | "createdAt" | "updatedAt">>;
+    }) => {
+      const { updateTemplate } = await import("@/services/recurringInvoiceService");
+      return updateTemplate(templateId, data);
+    },
+    onSuccess: (_, { templateId }) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.recurringTemplate(templateId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.recurringTemplates });
+    },
+  });
+}
+
+export function useDeleteRecurringTemplate() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (templateId: string) => {
+      const { deleteTemplate } = await import("@/services/recurringInvoiceService");
+      return deleteTemplate(templateId);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.recurringTemplates });
+    },
+  });
+}
+
+export function useGenerateInvoiceFromTemplate() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (template: RecurringInvoiceTemplate) => {
+      const { generateInvoiceFromTemplate } = await import("@/services/recurringInvoiceService");
+      return generateInvoiceFromTemplate(template);
+    },
+    onSuccess: (_, template) => {
+      // This mutation creates a real invoice AND stamps the template's
+      // lastGeneratedPeriod, so both query families need invalidating.
+      queryClient.invalidateQueries({ queryKey: queryKeys.recurringTemplate(template.id) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.recurringTemplates });
       queryClient.invalidateQueries({ queryKey: queryKeys.invoices });
       queryClient.invalidateQueries({ queryKey: queryKeys.financialSummary });
       queryClient.invalidateQueries({ queryKey: queryKeys.founderFinances });
