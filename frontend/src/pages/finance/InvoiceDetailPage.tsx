@@ -1,7 +1,7 @@
 import { useState, useMemo } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, Download, Send, CheckCircle2, CreditCard, Pencil, Trash2, Eye, ExternalLink } from "lucide-react";
-import { Button, Card, CardContent, CardHeader, CardTitle, Badge, Progress, Modal, Select, Skeleton } from "@/components/ui";
+import { ArrowLeft, Download, Send, CheckCircle2, CreditCard, Pencil, Trash2, Eye } from "lucide-react";
+import { Button, Card, CardContent, CardHeader, CardTitle, Badge, Progress, Modal, PdfPreviewModal, Select, Skeleton } from "@/components/ui";
 import { formatCurrency, formatDate, cn } from "@/lib/utils";
 import { useInvoice, useClient, useProject, useRecordPayment, useUpdateInvoice, useDeleteInvoice } from "@/hooks/useFirestore";
 import { generateAndDownloadInvoicePdf, generateInvoicePdfUrl } from "@/services/invoicePdfService";
@@ -526,48 +526,15 @@ export default function InvoiceDetailPage() {
         </div>
       </Modal>
 
-      {/* PDF View / Preview Modal */}
-      <Modal
+      <PdfPreviewModal
         isOpen={showPreviewModal}
         onClose={handleClosePreviewModal}
         title={`Invoice Preview — ${invoice?.invoiceNumber}`}
-        size="full"
-      >
-        <div className="space-y-3">
-          <div className="flex flex-wrap items-center justify-between gap-2 bg-muted/60 p-3 rounded-lg border">
-            <span className="text-sm font-medium">
-              Invoice #{invoice?.invoiceNumber} • {client?.companyName}
-            </span>
-            <div className="flex items-center gap-2">
-              {pdfPreviewUrl && (
-                <a href={pdfPreviewUrl} target="_blank" rel="noopener noreferrer">
-                  <Button variant="outline" size="sm">
-                    <ExternalLink className="h-4 w-4 mr-1" />
-                    Open in New Tab
-                  </Button>
-                </a>
-              )}
-              <Button size="sm" onClick={handleDownloadPdf} disabled={isDownloading}>
-                <Download className="h-4 w-4 mr-1" />
-                Download PDF
-              </Button>
-            </div>
-          </div>
-          {pdfPreviewUrl ? (
-            <div className="w-full h-[78vh] rounded-lg overflow-hidden border bg-zinc-900 flex items-center justify-center">
-              <iframe
-                src={pdfPreviewUrl}
-                title={`Invoice ${invoice?.invoiceNumber}`}
-                className="w-full h-full border-none"
-              />
-            </div>
-          ) : (
-            <div className="h-[60vh] flex items-center justify-center">
-              <p className="text-muted-foreground">Generating invoice preview...</p>
-            </div>
-          )}
-        </div>
-      </Modal>
+        subtitle={client?.companyName}
+        pdfUrl={pdfPreviewUrl}
+        onDownload={handleDownloadPdf}
+        isDownloading={isDownloading}
+      />
     </div>
   );
 }

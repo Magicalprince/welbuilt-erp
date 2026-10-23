@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, Download, Pencil, Trash2, Eye, ArrowRightLeft, FileText } from "lucide-react";
-import { Button, Card, CardContent, CardHeader, CardTitle, Badge, Modal, Skeleton } from "@/components/ui";
+import { Button, Card, CardContent, CardHeader, CardTitle, Badge, PdfPreviewModal, Skeleton } from "@/components/ui";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { useProforma, useClient, useProject, useDeleteProforma, useConvertProformaToInvoice } from "@/hooks/useFirestore";
 import { generateAndDownloadProformaPdf, generateProformaPdfUrl } from "@/services/proformaInvoicePdfService";
@@ -323,29 +323,15 @@ export default function ProformaDetailPage() {
         </div>
       </div>
 
-      {/* PDF Preview Modal */}
-      <Modal
+      <PdfPreviewModal
         isOpen={showPreviewModal}
         onClose={handleClosePreviewModal}
         title={`Proforma Preview — ${proforma.proformaNumber}`}
-        size="full"
-      >
-        <div className="space-y-3">
-          {pdfPreviewUrl ? (
-            <div className="w-full h-[78vh] rounded-lg overflow-hidden border bg-zinc-900 flex items-center justify-center">
-              <iframe
-                src={pdfPreviewUrl}
-                title={`Proforma ${proforma.proformaNumber}`}
-                className="w-full h-full border-none"
-              />
-            </div>
-          ) : (
-            <div className="h-[60vh] flex items-center justify-center">
-              <p className="text-muted-foreground">Generating preview...</p>
-            </div>
-          )}
-        </div>
-      </Modal>
+        subtitle={client?.companyName}
+        pdfUrl={pdfPreviewUrl}
+        onDownload={handleDownloadPdf}
+        isDownloading={isDownloading}
+      />
     </div>
   );
 }

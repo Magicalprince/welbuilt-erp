@@ -1,8 +1,8 @@
 import { useState, useMemo } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Plus, Search, FileText, Eye, Download, ExternalLink, ArrowRightLeft, Trash2 } from "lucide-react";
-import { Button, Input, Card, CardContent, Badge, Skeleton, Modal, Pagination } from "@/components/ui";
+import { Plus, Search, FileText, Eye, ArrowRightLeft, Trash2 } from "lucide-react";
+import { Button, Input, Card, CardContent, Badge, Skeleton, Modal, PdfPreviewModal, Pagination } from "@/components/ui";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { useProformas, useClients, useConvertProformaToInvoice, useDeleteProforma } from "@/hooks/useFirestore";
 import { usePagination } from "@/hooks/usePagination";
@@ -284,48 +284,14 @@ export default function ProformasPage() {
         />
       )}
 
-      {/* PDF View / Preview Modal */}
-      <Modal
+      <PdfPreviewModal
         isOpen={!!previewProforma}
         onClose={handleClosePreview}
         title={`Proforma Preview — ${previewProforma?.proformaNumber}`}
-        size="full"
-      >
-        <div className="space-y-3">
-          <div className="flex flex-wrap items-center justify-between gap-2 bg-muted/60 p-3 rounded-lg border">
-            <span className="text-sm font-medium">
-              {previewProforma?.proformaNumber} • {clientMap[previewProforma?.clientId || ""] || "Client"}
-            </span>
-            <div className="flex items-center gap-2">
-              {pdfPreviewUrl && (
-                <a href={pdfPreviewUrl} target="_blank" rel="noopener noreferrer">
-                  <Button variant="outline" size="sm">
-                    <ExternalLink className="h-4 w-4 mr-1" />
-                    Open in New Tab
-                  </Button>
-                </a>
-              )}
-              <Button size="sm" onClick={handleDownloadFromPreview}>
-                <Download className="h-4 w-4 mr-1" />
-                Download PDF
-              </Button>
-            </div>
-          </div>
-          {pdfPreviewUrl ? (
-            <div className="w-full h-[78vh] rounded-lg overflow-hidden border bg-zinc-900 flex items-center justify-center">
-              <iframe
-                src={pdfPreviewUrl}
-                title={`Proforma ${previewProforma?.proformaNumber}`}
-                className="w-full h-full border-none"
-              />
-            </div>
-          ) : (
-            <div className="h-[60vh] flex items-center justify-center">
-              <p className="text-muted-foreground">Generating preview...</p>
-            </div>
-          )}
-        </div>
-      </Modal>
+        subtitle={clientMap[previewProforma?.clientId || ""] || "Client"}
+        pdfUrl={pdfPreviewUrl}
+        onDownload={handleDownloadFromPreview}
+      />
 
       {/* Delete Confirm */}
       <Modal isOpen={!!deleteConfirm} onClose={() => setDeleteConfirm(null)} title="Delete Proforma">

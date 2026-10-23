@@ -35,6 +35,31 @@ export default function App() {
                 background: 'hsl(var(--card))',
                 color: 'hsl(var(--card-foreground))',
                 border: '1px solid hsl(var(--border))',
+                boxShadow: '0 4px 20px -4px hsl(var(--foreground) / 0.15)',
+              },
+              success: {
+                iconTheme: {
+                  primary: 'hsl(142, 76%, 36%)',
+                  secondary: 'hsl(var(--card))',
+                },
+                style: {
+                  border: '1px solid hsl(142, 76%, 36%, 0.4)',
+                },
+              },
+              error: {
+                iconTheme: {
+                  primary: 'hsl(var(--destructive))',
+                  secondary: 'hsl(var(--destructive-foreground))',
+                },
+                style: {
+                  border: '1px solid hsl(var(--destructive) / 0.4)',
+                },
+              },
+              loading: {
+                iconTheme: {
+                  primary: 'hsl(var(--primary))',
+                  secondary: 'hsl(var(--card))',
+                },
               },
             }}
           />

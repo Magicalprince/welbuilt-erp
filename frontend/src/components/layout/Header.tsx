@@ -73,7 +73,13 @@ export function Header({ sidebarCollapsed }: HeaderProps) {
         <div className="relative w-full max-w-md">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
+            type="search"
+            name="global-search"
             placeholder="Search projects, clients..."
+            autoComplete="off"
+            data-1p-ignore
+            data-lpignore="true"
+            data-form-type="other"
             className="pl-10 bg-muted/30 border-border/50 focus-visible:ring-primary/30 focus-visible:border-primary/50"
           />
         </div>

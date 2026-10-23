@@ -7,6 +7,7 @@ export { Select, type SelectProps, type SelectOption } from "./Select";
 export { Badge, type BadgeProps } from "./Badge";
 export { Avatar } from "./Avatar";
 export { Modal } from "./Modal";
+export { PdfPreviewModal } from "./PdfPreviewModal";
 export { Progress } from "./Progress";
 export { Skeleton, SkeletonCard, SkeletonTable } from "./Skeleton";
 export { Checkbox, type CheckboxProps } from "./Checkbox";

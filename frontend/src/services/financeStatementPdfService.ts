@@ -159,32 +159,44 @@ export async function generateFinanceStatementPdf(options: StatementOptions): Pr
   };
 
   // ── Header: company block + title + meta ─────────────────────────────
-  const LOGO_H = 30;
+  // Logo and company name sit side-by-side (not stacked) so the name reads
+  // as a clear wordmark at a glance rather than small print under the mark
+  // — the logo alone wasn't legible as "WelBuilt AI Solutions" at a glance
+  // in filing contexts where this gets printed or forwarded without
+  // on-screen zoom.
+  const LOGO_H = 32;
   const headerTextX = MARGIN;
-  let headerY = y - 10;
+  const logoTopY = y - 6;
+  let nameBlockX = headerTextX;
   if (logoImg) {
     const naturalDims = logoImg.scale(1);
     const scale = LOGO_H / naturalDims.height;
     const logoW = naturalDims.width * scale;
-    page.drawImage(logoImg, { x: headerTextX, y: headerY - LOGO_H + 8, width: logoW, height: LOGO_H });
+    page.drawImage(logoImg, { x: headerTextX, y: logoTopY - LOGO_H, width: logoW, height: LOGO_H });
+    nameBlockX = headerTextX + logoW + 10;
   }
-  headerY -= LOGO_H - 2;
-  page.drawText(ISSUER.name, { x: headerTextX, y: headerY, size: 11, font: bold });
-  headerY -= 13;
+  let headerY = logoTopY - 10;
+  page.drawText(ISSUER.name, { x: nameBlockX, y: headerY, size: 13, font: bold });
+  headerY -= 15;
   ISSUER.addressLines.forEach((line) => {
-    page.drawText(line, { x: headerTextX, y: headerY, size: 8, font: regular, color: COLORS.slate });
+    page.drawText(line, { x: nameBlockX, y: headerY, size: 8, font: regular, color: COLORS.slate });
     headerY -= 11;
   });
   if (gstin) {
-    page.drawText(`GSTIN/UIN: ${gstin}`, { x: headerTextX, y: headerY, size: 8, font: regular, color: COLORS.slate });
+    page.drawText(`GSTIN/UIN: ${gstin}`, { x: nameBlockX, y: headerY, size: 8, font: regular, color: COLORS.slate });
     headerY -= 11;
   }
 
-  drawCentered(options.title, PAGE_W / 2, y - 10, 14, bold);
-  drawRightAligned(`Period: ${options.dateRangeLabel || "All time"}`, MARGIN + CONTENT_W, y - 28, 8.5, regular, COLORS.slate);
-  drawRightAligned(`Generated: ${formatShortDate(new Date())}`, MARGIN + CONTENT_W, y - 40, 8.5, regular, COLORS.slate);
+  // Title + meta sit on their own row below the whole company block (logo
+  // + name + address), not beside it — with the name now drawn next to the
+  // logo instead of underneath it, the old fixed `y - 10` title position
+  // collided with the name text since both were anchored to the same row.
+  const metaTop = Math.min(headerY, logoTopY - LOGO_H) - 12;
+  drawCentered(options.title, PAGE_W / 2, metaTop, 14, bold);
+  drawRightAligned(`Period: ${options.dateRangeLabel || "All time"}`, MARGIN + CONTENT_W, metaTop, 8.5, regular, COLORS.slate);
+  drawRightAligned(`Generated: ${formatShortDate(new Date())}`, MARGIN + CONTENT_W, metaTop - 12, 8.5, regular, COLORS.slate);
 
-  y = Math.min(headerY, y - 52) - 10;
+  y = metaTop - 24;
   hLine(y);
   y -= 16;
 
@@ -236,77 +248,152 @@ export async function generateFinanceStatementPdf(options: StatementOptions): Pr
   };
 
   const minUsableY = MARGIN + 40;
+  // What the Net summary box needs on whatever page it lands on — reserved
+  // ahead of time by the final section's own pagination (see
+  // `reserveForFollowingBlock` below), not just checked after both
+  // sections finish drawing. That late, separate check was the actual bug:
+  // each row only reserved its own ~25pt trailing buffer, so the last
+  // section's subtotal could land a few points above minUsableY, pass its
+  // own check, and then have the 70pt summary box slapped on right after —
+  // overlapping whatever was already near the bottom of that page.
+  const netSummaryH = 70;
 
-  // Draws one section (Income or Expenses): header row, every row with
-  // row-by-row pagination (repeating the header on a new page when a row
-  // doesn't fit), then a subtotal row. Returns the subtotal.
-  const drawSection = (sectionLabel: string, rows: StatementRow[]): number => {
+  // Groups rows by calendar month (newest first, matching the newest-first
+  // sort already applied upstream) so the statement reads as a real
+  // month-wise P&L rather than one long flat ledger — the filing-ready
+  // shape an accountant expects, with a subtotal per month instead of only
+  // one grand total at the very end.
+  const monthKey = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+  const monthLabel = (d: Date) => d.toLocaleDateString("en-IN", { month: "long", year: "numeric" });
+  function groupByMonth(rows: StatementRow[]): { key: string; label: string; rows: StatementRow[] }[] {
+    const groups = new Map<string, StatementRow[]>();
+    for (const row of rows) {
+      const key = monthKey(row.date);
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push(row);
+    }
+    return [...groups.entries()]
+      .sort(([a], [b]) => (a < b ? 1 : -1)) // newest month first
+      .map(([key, groupRows]) => ({ key, label: monthLabel(groupRows[0].date), rows: groupRows }));
+  }
+
+  // Draws one section (Income or Expenses): a month subheader + ruled table
+  // + month-subtotal for each calendar month present, then a bold Total row
+  // for the whole section. `reserveForFollowingBlock` is the extra trailing
+  // space (beyond this section's own rows) that must still fit on the same
+  // page as this section's very last row — used to pull the Net summary
+  // box's page-break decision into the same pagination pass instead of
+  // being checked separately afterward.
+  const drawSection = (sectionLabel: string, rows: StatementRow[], reserveForFollowingBlock: number): number => {
     if (y < minUsableY + 60) newPage();
 
     drawCentered(sectionLabel, PAGE_W / 2, y - 2, 11, bold);
     y -= 18;
 
-    y = drawTableHeaderRow();
+    const monthGroups = groupByMonth(rows);
+    let sectionTotal = 0;
 
-    const measuredRows = rows.map((row) => {
-      const lines = wrapText(row.description, regular, 9, descMaxWidth);
-      return { row, lines, height: Math.max(rowH, lines.length * 11 + 4) };
-    });
+    if (monthGroups.length === 0) {
+      y = drawTableHeaderRow();
+      page.drawText("No records in this period", { x: MARGIN + 6, y: y - 12, size: 9, font: regular, color: COLORS.slate });
+      closeTableSection(y, y - rowH);
+      y -= rowH;
+    }
 
-    let tableTop = y;
-    let rowY = tableTop;
-    let rowsDrawnOnThisPage = 0;
-    let subtotal = 0;
+    monthGroups.forEach((group, groupIdx) => {
+      const isLastGroup = groupIdx === monthGroups.length - 1;
+      if (y < minUsableY + 50) newPage();
 
-    for (let i = 0; i < measuredRows.length; i++) {
-      const { row, lines, height } = measuredRows[i];
-      const isLastRow = i === measuredRows.length - 1;
-      const trailingReserve = isLastRow ? rowH + 10 : rowH;
-      if (rowY - height - trailingReserve < minUsableY && rowsDrawnOnThisPage > 0) {
-        closeTableSection(tableTop, rowY);
-        drawCentered("(Continued on next page)", PAGE_W / 2, rowY - 12, 7.5, regular, COLORS.slate);
-        newPage();
-        y = drawTableHeaderRow();
-        tableTop = y;
-        rowY = tableTop;
-        rowsDrawnOnThisPage = 0;
+      page.drawText(group.label, { x: MARGIN + 2, y: y - 2, size: 9, font: bold, color: COLORS.slate });
+      y -= 14;
+
+      y = drawTableHeaderRow();
+
+      const measuredRows = group.rows.map((row) => {
+        const lines = wrapText(row.description, regular, 9, descMaxWidth);
+        return { row, lines, height: Math.max(rowH, lines.length * 11 + 4) };
+      });
+
+      let tableTop = y;
+      let rowY = tableTop;
+      let rowsDrawnOnThisPage = 0;
+      let monthSubtotal = 0;
+
+      for (let i = 0; i < measuredRows.length; i++) {
+        const { row, lines, height } = measuredRows[i];
+        const isLastRowOfSection = isLastGroup && i === measuredRows.length - 1;
+        // Only the section's final row needs to additionally fit the
+        // caller-supplied trailing block (e.g. the Net summary); every
+        // other row — including the last row of a non-final month, and the
+        // last row of a non-final section — only needs its own small
+        // subtotal-row buffer.
+        const trailingReserve = isLastRowOfSection ? rowH + 10 + reserveForFollowingBlock : rowH + 10;
+        if (rowY - height - trailingReserve < minUsableY && rowsDrawnOnThisPage > 0) {
+          closeTableSection(tableTop, rowY);
+          drawCentered("(Continued on next page)", PAGE_W / 2, rowY - 12, 7.5, regular, COLORS.slate);
+          newPage();
+          y = drawTableHeaderRow();
+          tableTop = y;
+          rowY = tableTop;
+          rowsDrawnOnThisPage = 0;
+        }
+
+        page.drawText(formatShortDate(row.date), { x: MARGIN + 6, y: rowY - 12, size: 8.5, font: regular });
+        lines.forEach((line, li) => {
+          page.drawText(line, { x: colDescX, y: rowY - 12 - li * 11, size: 9, font: regular });
+        });
+        const categorySize = fitFontSize(row.categoryLabel, regular, 8.5, categoryMaxWidth);
+        page.drawText(row.categoryLabel, { x: colCategoryX, y: rowY - 12, size: categorySize, font: regular, color: COLORS.slate });
+        drawRightAligned(formatMoney(row.amount), colAmountRightX, rowY - 12, 9, regular);
+
+        monthSubtotal += row.amount;
+        rowY -= height;
+        rowsDrawnOnThisPage++;
       }
 
-      page.drawText(formatShortDate(row.date), { x: MARGIN + 6, y: rowY - 12, size: 8.5, font: regular });
-      lines.forEach((line, li) => {
-        page.drawText(line, { x: colDescX, y: rowY - 12 - li * 11, size: 9, font: regular });
-      });
-      const categorySize = fitFontSize(row.categoryLabel, regular, 8.5, categoryMaxWidth);
-      page.drawText(row.categoryLabel, { x: colCategoryX, y: rowY - 12, size: categorySize, font: regular, color: COLORS.slate });
-      drawRightAligned(formatMoney(row.amount), colAmountRightX, rowY - 12, 9, regular);
+      const subtotalTopY = rowY;
+      const subtotalBottomY = subtotalTopY - rowH - 6;
+      closeTableSection(tableTop, subtotalBottomY);
+      // Label starts at the row's full left edge (not colCategoryX) — that
+      // narrow Category-column span was sized for short category words,
+      // not a "<Month> Subtotal" label, which ran into the right-aligned
+      // amount for any month name longer than ~4 characters.
+      page.drawText(`${group.label} Subtotal`, { x: MARGIN + 8, y: subtotalTopY - 13, size: 8.5, font: bold, color: COLORS.slate });
+      drawRightAligned(formatMoney(monthSubtotal), colAmountRightX, subtotalTopY - 13, 9, bold);
+      hLine(subtotalTopY);
 
-      subtotal += row.amount;
-      rowY -= height;
-      rowsDrawnOnThisPage++;
-    }
+      sectionTotal += monthSubtotal;
+      y = subtotalBottomY - 10;
+    });
 
-    if (measuredRows.length === 0) {
-      page.drawText("No records in this period", { x: MARGIN + 6, y: rowY - 12, size: 9, font: regular, color: COLORS.slate });
-      rowY -= rowH;
-    }
+    // Section grand total — bold, visually heavier than a month subtotal,
+    // always immediately after the last month's subtotal (never paginated
+    // away from it: it was already reserved for via reserveForFollowingBlock
+    // on the last row above when this is the final section).
+    const totalTopY = y;
+    const totalBottomY = totalTopY - rowH - 6;
+    closeTableSection(totalTopY, totalBottomY);
+    page.drawText(`Total ${sectionLabel}`, { x: MARGIN + 8, y: totalTopY - 13, size: 10, font: bold });
+    drawRightAligned(formatMoney(sectionTotal), colAmountRightX, totalTopY - 13, 11, bold);
+    hLine(totalTopY);
 
-    const subtotalTopY = rowY;
-    const subtotalBottomY = subtotalTopY - rowH - 6;
-    closeTableSection(tableTop, subtotalBottomY);
-    page.drawText(`Total ${sectionLabel}`, { x: colCategoryX, y: subtotalTopY - 13, size: 9.5, font: bold });
-    drawRightAligned(formatMoney(subtotal), colAmountRightX, subtotalTopY - 13, 10, bold);
-    hLine(subtotalTopY);
-
-    y = subtotalBottomY - 20;
-    return subtotal;
+    y = totalBottomY - 20;
+    return sectionTotal;
   };
 
-  const incomeTotal = options.income ? drawSection("Income", options.income) : 0;
-  const expenseTotal = options.expenses ? drawSection("Expenses", options.expenses) : 0;
+  // The Net summary's 70pt is only relevant to whichever section draws
+  // last — reserve it there so that section's own pagination keeps the
+  // summary glued to its total instead of a page break landing between them.
+  const hasNetSummary = !!(options.income && options.expenses);
+  const incomeTotal = options.income
+    ? drawSection("Income", options.income, !options.expenses && hasNetSummary ? netSummaryH : 0)
+    : 0;
+  const expenseTotal = options.expenses
+    ? drawSection("Expenses", options.expenses, hasNetSummary ? netSummaryH : 0)
+    : 0;
 
   // ── Net summary ─────────────────────────────────────────────────────
   if (options.income && options.expenses) {
-    if (y < minUsableY + 70) newPage();
     const net = incomeTotal - expenseTotal;
     const summaryTop = y;
     const summaryH = 70;

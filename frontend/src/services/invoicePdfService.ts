@@ -1,4 +1,4 @@
-import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
+import { PDFDocument, rgb, StandardFonts, degrees } from "pdf-lib";
 import fontkit from "@pdf-lib/fontkit";
 import { saveAs } from "file-saver";
 import type { Invoice, Client, Project, CompanySettings } from "@/types";
@@ -63,6 +63,8 @@ const COLORS = {
   slate: rgb(0.3, 0.3, 0.3),
   line: rgb(0, 0, 0),
   headerBg: rgb(0.93, 0.93, 0.93),
+  stampGreen: rgb(0.11, 0.55, 0.25),
+  stampAmber: rgb(0.78, 0.48, 0.02),
 };
 
 const PAGE_W = 595.28;
@@ -153,9 +155,11 @@ export async function generateInvoicePdf(
 
   let page = pdfDoc.addPage([PAGE_W, PAGE_H]);
   let y = PAGE_H - MARGIN;
+  const allPages = [page];
 
   const newPage = () => {
     page = pdfDoc.addPage([PAGE_W, PAGE_H]);
+    allPages.push(page);
     y = PAGE_H - MARGIN;
   };
 
@@ -662,6 +666,48 @@ export async function generateInvoicePdf(
 
   // ── Footer ──────────────────────────────────────────────────────────────
   drawCentered("This is a Computer Generated Invoice", PAGE_W / 2, y - 16, 7.5, regular, COLORS.slate);
+
+  // ── Status stamp ────────────────────────────────────────────────────────
+  // A rotated, semi-transparent rubber-stamp mark so a paid invoice and a
+  // provisional proforma are unmistakable at a glance, not just from small
+  // print — drawn last so it overlays the content, on every page (a
+  // multi-page invoice shouldn't have an unmarked page 2). Proforma takes
+  // precedence over PAID: a proforma's `status` is hardcoded "DRAFT" by its
+  // PDF adapter and is never itself a tax invoice regardless of payment.
+  const stamp = title !== "Invoice"
+    ? { text: "PROFORMA", color: COLORS.stampAmber }
+    : invoice.status === "PAID"
+      ? { text: "PAID", color: COLORS.stampGreen }
+      : null;
+
+  if (stamp) {
+    const stampSize = 34;
+    const stampX = PAGE_W - 150;
+    const stampY = PAGE_H - 110;
+    for (const p of allPages) {
+      p.drawText(stamp.text, {
+        x: stampX,
+        y: stampY,
+        size: stampSize,
+        font: bold,
+        color: stamp.color,
+        opacity: 0.35,
+        rotate: degrees(-18),
+      });
+      const textW = bold.widthOfTextAtSize(stamp.text, stampSize);
+      p.drawRectangle({
+        x: stampX - 10,
+        y: stampY - 8,
+        width: textW + 20,
+        height: stampSize * 0.8,
+        borderColor: stamp.color,
+        borderWidth: 2,
+        borderOpacity: 0.35,
+        opacity: 0,
+        rotate: degrees(-18),
+      });
+    }
+  }
 
   return pdfDoc.save();
 }
