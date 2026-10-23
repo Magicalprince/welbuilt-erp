@@ -159,39 +159,33 @@ export async function generateFinanceStatementPdf(options: StatementOptions): Pr
   };
 
   // ── Header: company block + title + meta ─────────────────────────────
-  // Logo and company name sit side-by-side (not stacked) so the name reads
-  // as a clear wordmark at a glance rather than small print under the mark
-  // — the logo alone wasn't legible as "WelBuilt AI Solutions" at a glance
-  // in filing contexts where this gets printed or forwarded without
-  // on-screen zoom.
-  const LOGO_H = 32;
+  // Logo only, no company-name text beside or under it — the logo already
+  // carries the brand mark (same convention invoicePdfService.ts already
+  // uses), so a redundant "WelBuilt AI Solutions Pvt. Ltd." text line was
+  // dropped per explicit request. Address sits directly below the logo,
+  // stacked, not beside it.
+  const LOGO_H = 34;
   const headerTextX = MARGIN;
   const logoTopY = y - 6;
-  let nameBlockX = headerTextX;
+  let headerY = logoTopY - LOGO_H - 4;
   if (logoImg) {
     const naturalDims = logoImg.scale(1);
     const scale = LOGO_H / naturalDims.height;
     const logoW = naturalDims.width * scale;
     page.drawImage(logoImg, { x: headerTextX, y: logoTopY - LOGO_H, width: logoW, height: LOGO_H });
-    nameBlockX = headerTextX + logoW + 10;
   }
-  let headerY = logoTopY - 10;
-  page.drawText(ISSUER.name, { x: nameBlockX, y: headerY, size: 13, font: bold });
-  headerY -= 15;
   ISSUER.addressLines.forEach((line) => {
-    page.drawText(line, { x: nameBlockX, y: headerY, size: 8, font: regular, color: COLORS.slate });
+    page.drawText(line, { x: headerTextX, y: headerY, size: 8, font: regular, color: COLORS.slate });
     headerY -= 11;
   });
   if (gstin) {
-    page.drawText(`GSTIN/UIN: ${gstin}`, { x: nameBlockX, y: headerY, size: 8, font: regular, color: COLORS.slate });
+    page.drawText(`GSTIN/UIN: ${gstin}`, { x: headerTextX, y: headerY, size: 8, font: regular, color: COLORS.slate });
     headerY -= 11;
   }
 
   // Title + meta sit on their own row below the whole company block (logo
-  // + name + address), not beside it — with the name now drawn next to the
-  // logo instead of underneath it, the old fixed `y - 10` title position
-  // collided with the name text since both were anchored to the same row.
-  const metaTop = Math.min(headerY, logoTopY - LOGO_H) - 12;
+  // + address), not beside it.
+  const metaTop = headerY - 10;
   drawCentered(options.title, PAGE_W / 2, metaTop, 14, bold);
   drawRightAligned(`Period: ${options.dateRangeLabel || "All time"}`, MARGIN + CONTENT_W, metaTop, 8.5, regular, COLORS.slate);
   drawRightAligned(`Generated: ${formatShortDate(new Date())}`, MARGIN + CONTENT_W, metaTop - 12, 8.5, regular, COLORS.slate);
@@ -219,7 +213,16 @@ export async function generateFinanceStatementPdf(options: StatementOptions): Pr
   const categoryMaxWidth = colAmountDivX - 6 - colCategoryX - 4;
 
   const tableColXs = [MARGIN, colDateDivX, colCategoryDivX, colAmountDivX, MARGIN + CONTENT_W];
-  const rowH = 15;
+  // A row's text baseline sits at rowTop - TEXT_BASELINE_OFFSET (first
+  // line) and the row needs ROW_BOTTOM_PAD clearance below its LAST
+  // baseline before the divider that closes it off — otherwise text and
+  // the line below it visually collide, which is exactly what a too-thin
+  // bottom margin here produced (only ~3pt of clearance), especially
+  // visible once a Description wrapped to two lines.
+  const TEXT_BASELINE_OFFSET = 11;
+  const LINE_STEP = 12;
+  const ROW_BOTTOM_PAD = 6;
+  const rowH = TEXT_BASELINE_OFFSET + ROW_BOTTOM_PAD; // single-line row height
 
   const drawTableHeaderRow = (): number => {
     const headerH = 20;
@@ -295,7 +298,7 @@ export async function generateFinanceStatementPdf(options: StatementOptions): Pr
 
     if (monthGroups.length === 0) {
       y = drawTableHeaderRow();
-      page.drawText("No records in this period", { x: MARGIN + 6, y: y - 12, size: 9, font: regular, color: COLORS.slate });
+      page.drawText("No records in this period", { x: MARGIN + 6, y: y - TEXT_BASELINE_OFFSET, size: 9, font: regular, color: COLORS.slate });
       closeTableSection(y, y - rowH);
       y -= rowH;
     }
@@ -311,7 +314,8 @@ export async function generateFinanceStatementPdf(options: StatementOptions): Pr
 
       const measuredRows = group.rows.map((row) => {
         const lines = wrapText(row.description, regular, 9, descMaxWidth);
-        return { row, lines, height: Math.max(rowH, lines.length * 11 + 4) };
+        const height = TEXT_BASELINE_OFFSET + (lines.length - 1) * LINE_STEP + ROW_BOTTOM_PAD;
+        return { row, lines, height: Math.max(rowH, height) };
       });
 
       let tableTop = y;
@@ -330,7 +334,7 @@ export async function generateFinanceStatementPdf(options: StatementOptions): Pr
         const trailingReserve = isLastRowOfSection ? rowH + 10 + reserveForFollowingBlock : rowH + 10;
         if (rowY - height - trailingReserve < minUsableY && rowsDrawnOnThisPage > 0) {
           closeTableSection(tableTop, rowY);
-          drawCentered("(Continued on next page)", PAGE_W / 2, rowY - 12, 7.5, regular, COLORS.slate);
+          drawCentered("(Continued on next page)", PAGE_W / 2, rowY - TEXT_BASELINE_OFFSET, 7.5, regular, COLORS.slate);
           newPage();
           y = drawTableHeaderRow();
           tableTop = y;
@@ -338,28 +342,29 @@ export async function generateFinanceStatementPdf(options: StatementOptions): Pr
           rowsDrawnOnThisPage = 0;
         }
 
-        page.drawText(formatShortDate(row.date), { x: MARGIN + 6, y: rowY - 12, size: 8.5, font: regular });
+        page.drawText(formatShortDate(row.date), { x: MARGIN + 6, y: rowY - TEXT_BASELINE_OFFSET, size: 8.5, font: regular });
         lines.forEach((line, li) => {
-          page.drawText(line, { x: colDescX, y: rowY - 12 - li * 11, size: 9, font: regular });
+          page.drawText(line, { x: colDescX, y: rowY - TEXT_BASELINE_OFFSET - li * LINE_STEP, size: 9, font: regular });
         });
         const categorySize = fitFontSize(row.categoryLabel, regular, 8.5, categoryMaxWidth);
-        page.drawText(row.categoryLabel, { x: colCategoryX, y: rowY - 12, size: categorySize, font: regular, color: COLORS.slate });
-        drawRightAligned(formatMoney(row.amount), colAmountRightX, rowY - 12, 9, regular);
+        page.drawText(row.categoryLabel, { x: colCategoryX, y: rowY - TEXT_BASELINE_OFFSET, size: categorySize, font: regular, color: COLORS.slate });
+        drawRightAligned(formatMoney(row.amount), colAmountRightX, rowY - TEXT_BASELINE_OFFSET, 9, regular);
 
         monthSubtotal += row.amount;
         rowY -= height;
         rowsDrawnOnThisPage++;
       }
 
+      const subtotalRowH = TEXT_BASELINE_OFFSET + ROW_BOTTOM_PAD + 4;
       const subtotalTopY = rowY;
-      const subtotalBottomY = subtotalTopY - rowH - 6;
+      const subtotalBottomY = subtotalTopY - subtotalRowH;
       closeTableSection(tableTop, subtotalBottomY);
       // Label starts at the row's full left edge (not colCategoryX) — that
       // narrow Category-column span was sized for short category words,
       // not a "<Month> Subtotal" label, which ran into the right-aligned
       // amount for any month name longer than ~4 characters.
-      page.drawText(`${group.label} Subtotal`, { x: MARGIN + 8, y: subtotalTopY - 13, size: 8.5, font: bold, color: COLORS.slate });
-      drawRightAligned(formatMoney(monthSubtotal), colAmountRightX, subtotalTopY - 13, 9, bold);
+      page.drawText(`${group.label} Subtotal`, { x: MARGIN + 8, y: subtotalTopY - TEXT_BASELINE_OFFSET, size: 8.5, font: bold, color: COLORS.slate });
+      drawRightAligned(formatMoney(monthSubtotal), colAmountRightX, subtotalTopY - TEXT_BASELINE_OFFSET, 9, bold);
       hLine(subtotalTopY);
 
       sectionTotal += monthSubtotal;
@@ -370,11 +375,12 @@ export async function generateFinanceStatementPdf(options: StatementOptions): Pr
     // always immediately after the last month's subtotal (never paginated
     // away from it: it was already reserved for via reserveForFollowingBlock
     // on the last row above when this is the final section).
+    const totalRowH = TEXT_BASELINE_OFFSET + ROW_BOTTOM_PAD + 4;
     const totalTopY = y;
-    const totalBottomY = totalTopY - rowH - 6;
+    const totalBottomY = totalTopY - totalRowH;
     closeTableSection(totalTopY, totalBottomY);
-    page.drawText(`Total ${sectionLabel}`, { x: MARGIN + 8, y: totalTopY - 13, size: 10, font: bold });
-    drawRightAligned(formatMoney(sectionTotal), colAmountRightX, totalTopY - 13, 11, bold);
+    page.drawText(`Total ${sectionLabel}`, { x: MARGIN + 8, y: totalTopY - TEXT_BASELINE_OFFSET, size: 10, font: bold });
+    drawRightAligned(formatMoney(sectionTotal), colAmountRightX, totalTopY - TEXT_BASELINE_OFFSET, 11, bold);
     hLine(totalTopY);
 
     y = totalBottomY - 20;
