@@ -121,6 +121,7 @@ export async function generateInvoicePdf(
   client: Client,
   _project: Project | null,
   companySettings: CompanySettings,
+  title: string = "Invoice",
 ): Promise<Uint8Array> {
   const issuer = ISSUERS[invoice.brand ?? "sparks"];
   const sellerGstin = companySettings.gstNumber || issuer.gstin;
@@ -180,9 +181,19 @@ export async function generateInvoicePdf(
   // ── Title ────────────────────────────────────────────────────────────
   // "Invoice", not "Tax Invoice" — GST is one optional line among several
   // billing shapes this document covers, not always present, so a title
-  // that names it specifically would be wrong on a no-GST bill.
-  drawCentered("Invoice", PAGE_W / 2, y, 13, bold);
-  y -= 20;
+  // that names it specifically would be wrong on a no-GST bill. A caller
+  // (e.g. the Proforma Invoice PDF adapter) can override this, in which
+  // case a disclaimer line renders underneath it — a document titled
+  // anything other than plain "Invoice" is, by construction here, not a
+  // GST-valid tax invoice, and that needs to be visually unambiguous on
+  // the printed page, not just a title-text difference.
+  drawCentered(title, PAGE_W / 2, y, 13, bold);
+  y -= 16;
+  if (title !== "Invoice") {
+    drawCentered("Not a Tax Invoice — provisional only", PAGE_W / 2, y, 7.5, regular, COLORS.slate);
+    y -= 12;
+  }
+  y -= 4;
   const outerTop = y;
 
   // ── Seller block (left) + Invoice meta grid (right) ────────────────────
@@ -219,8 +230,9 @@ export async function generateInvoicePdf(
   sellerY -= 11;
 
   // Invoice meta grid — two columns of label/value pairs, ruled like the reference.
+  const numberLabel = title === "Invoice" ? "Invoice No." : `${title} No.`;
   const metaRows: [string, string][] = [
-    ["Invoice No.", invoice.invoiceNumber],
+    [numberLabel, invoice.invoiceNumber],
     ["Dated", formatShortDate(invoice.issueDate)],
     ["Delivery Note", ""],
     ["Mode/Terms of Payment", ""],
@@ -660,9 +672,10 @@ export async function generateInvoicePdfBlob(
   invoice: Invoice,
   client: Client,
   project: Project | null,
+  title: string = "Invoice",
 ): Promise<Blob> {
   const companySettings = await getCompanySettings();
-  const pdfBytes = await generateInvoicePdf(invoice, client, project, companySettings);
+  const pdfBytes = await generateInvoicePdf(invoice, client, project, companySettings, title);
   return new Blob([new Uint8Array(pdfBytes)], { type: "application/pdf" });
 }
 
@@ -670,8 +683,9 @@ export async function generateInvoicePdfUrl(
   invoice: Invoice,
   client: Client,
   project: Project | null,
+  title: string = "Invoice",
 ): Promise<string> {
-  const blob = await generateInvoicePdfBlob(invoice, client, project);
+  const blob = await generateInvoicePdfBlob(invoice, client, project, title);
   return URL.createObjectURL(blob);
 }
 
@@ -679,7 +693,8 @@ export async function generateAndDownloadInvoicePdf(
   invoice: Invoice,
   client: Client,
   project: Project | null,
+  title: string = "Invoice",
 ): Promise<void> {
-  const blob = await generateInvoicePdfBlob(invoice, client, project);
+  const blob = await generateInvoicePdfBlob(invoice, client, project, title);
   saveAs(blob, `${invoice.invoiceNumber}_${client.companyName.replace(/\s+/g, "_")}.pdf`);
 }
