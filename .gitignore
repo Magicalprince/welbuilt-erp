@@ -14,3 +14,8 @@ node_modules
 # Local server-side document storage — in production this path is the
 # Dokploy-managed volume mount, never committed content.
 server/data/
+
+# Playwright MCP debug artifacts — accessibility snapshots can capture
+# filled form fields verbatim, including passwords typed during manual
+# login verification. Never meant to be committed.
+.playwright-mcp/
