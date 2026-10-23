@@ -26,6 +26,8 @@ export const COLLECTIONS = {
   PROJECT_MVP: "projectMvpFeatures",
   INVOICES: "invoices",
   INVOICE_PAYMENTS: "invoicePayments",
+  PROFORMA_INVOICES: "proformaInvoices",
+  RECURRING_INVOICE_TEMPLATES: "recurringInvoiceTemplates",
   QUOTATIONS: "quotations",
   EXPENSES: "expenses",
   INCOMES: "incomes",

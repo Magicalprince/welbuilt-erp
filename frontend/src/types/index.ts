@@ -138,6 +138,80 @@ export interface Invoice {
   updatedAt: Date;
 }
 
+// Proforma Invoice — a preliminary, non-GST-binding estimate sent before
+// work/payment is confirmed. Deliberately a separate type from Invoice,
+// not Invoice+a status flag: it has no payments/paidAmount (nothing is
+// ever paid against a proforma) and uses validUntil instead of a
+// payment-driven dueDate. Field names mirror Invoice closely on purpose
+// so it can be mapped into the same PDF-drawing function without a
+// second ~400-line layout implementation.
+export type ProformaStatus = "DRAFT" | "SENT" | "CONVERTED" | "EXPIRED" | "CANCELLED";
+
+export interface ProformaInvoice {
+  id: string;
+  proformaNumber: string;
+  clientId: string;
+  client?: Client;
+  projectId?: string;
+  project?: Project;
+  issueDate: Date;
+  validUntil?: Date;
+  lineItems: InvoiceLineItem[];
+  subtotal: number;
+  discount: number;
+  total: number;
+  status: ProformaStatus;
+  notes?: string;
+  brand?: "welbuilt" | "sparks";
+  gstType?: GSTType;
+  cgstPercent?: number;
+  sgstPercent?: number;
+  igstPercent?: number;
+  cgstAmount?: number;
+  sgstAmount?: number;
+  igstAmount?: number;
+  // Set once converted via convertProformaToInvoice() — the durable
+  // link from the estimate to the real invoice it became.
+  convertedToInvoiceId?: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+// Recurring Invoice Template — a saved Invoice-shaped blueprint plus a
+// monthly billing schedule. Generation is always a manual "Generate Due"
+// action (no cron job), and always produces a real Tax Invoice directly,
+// not a Proforma — monthly maintenance/hosting charges are routine,
+// already-agreed amounts that don't need an estimate step each cycle.
+export type RecurringFrequency = "MONTHLY"; // union so QUARTERLY/YEARLY
+                                             // is an additive change later
+
+export interface RecurringInvoiceTemplate {
+  id: string;
+  templateName: string;
+  clientId: string;
+  client?: Client;
+  projectId?: string;
+  lineItems: InvoiceLineItem[];
+  discount: number;
+  gstType?: GSTType;
+  cgstPercent?: number;
+  sgstPercent?: number;
+  igstPercent?: number;
+  notes?: string;
+  brand?: "welbuilt" | "sparks";
+  frequency: RecurringFrequency;
+  // 1-28, capped below 29 so a template set near month-end never
+  // silently skips February.
+  billingDay: number;
+  isActive: boolean;
+  // "2026-10" — which month was last generated; prevents generating the
+  // same period twice when "Generate Due" is clicked more than once.
+  lastGeneratedPeriod?: string;
+  lastGeneratedInvoiceId?: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 // Expense Types
 export type ExpenseCategory =
   | "TOOLS"
