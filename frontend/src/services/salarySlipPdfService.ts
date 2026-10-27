@@ -415,21 +415,24 @@ export async function generateSalarySlipPdf(data: SalarySlipData): Promise<Uint8
   // aspect ratio on top, "signed over the stamp" layering. Both source
   // images are cropped to their actual content (see cropToContent) before
   // reaching here, so this height budget is spent entirely on visible
-  // artwork rather than the blank margin the raw PNGs carry — the footer
-  // is derived from sigBlockBottom below, so growing these never
+  // artwork rather than the blank margin the raw PNGs carry. SEAL_H=75 is
+  // roughly a real 1in rubber-stamp size — a prior round at 130 (right
+  // after the crop fix landed) read as oversized since every point of
+  // that height was now real ink instead of mostly padding. The footer
+  // is derived from sigBlockBottom below, so resizing these never
   // reintroduces an empty gap underneath. ───────────────────────────────
   const sigTop = y;
   const sigBlockRightX = MARGIN + CONTENT_W - 16;
   const sigLabel = `for ${COMPANY_NAME}`;
   drawRightAligned(sigLabel, sigBlockRightX, sigTop - 16, 9, bold);
 
-  const SEAL_H = 130;
+  const SEAL_H = 75;
   const sealTopY = sigTop - 22;
   let sealW = 0;
   if (sealImg) {
     const naturalDims = sealImg.scale(1);
     const scale = SEAL_H / naturalDims.height;
-    sealW = Math.min(naturalDims.width * scale, CONTENT_W * 0.35);
+    sealW = Math.min(naturalDims.width * scale, CONTENT_W * 0.22);
     page.drawImage(sealImg, {
       x: sigBlockRightX - sealW,
       y: sealTopY - SEAL_H,
@@ -441,8 +444,8 @@ export async function generateSalarySlipPdf(data: SalarySlipData): Promise<Uint8
 
   // Signature: sized from its own aspect ratio, drawn opaque over the
   // lower-third of the seal.
-  const SIG_MAX_H = 48;
-  const SIG_MAX_W = 125;
+  const SIG_MAX_H = 28;
+  const SIG_MAX_W = 72;
   let sigImgBottomY = sealTopY - SEAL_H * 0.55;
   if (signatureImg) {
     const naturalDims = signatureImg.scale(1);
