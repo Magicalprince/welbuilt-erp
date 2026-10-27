@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, Download, Pencil, Trash2, Eye, ArrowRightLeft, FileText } from "lucide-react";
-import { Button, Card, CardContent, CardHeader, CardTitle, Badge, PdfPreviewModal, Skeleton } from "@/components/ui";
+import { Button, Card, CardContent, CardHeader, CardTitle, Badge, PdfPreviewModal, ConfirmModal, Skeleton } from "@/components/ui";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { useProforma, useClient, useProject, useDeleteProforma, useConvertProformaToInvoice } from "@/hooks/useFirestore";
 import { generateAndDownloadProformaPdf, generateProformaPdfUrl } from "@/services/proformaInvoicePdfService";
@@ -23,6 +23,8 @@ export default function ProformaDetailPage() {
   const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
   const [isPreviewLoading, setIsPreviewLoading] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
+  const [showConvertConfirm, setShowConvertConfirm] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   const isConverted = proforma?.status === "CONVERTED";
 
@@ -62,13 +64,6 @@ export default function ProformaDetailPage() {
 
   const handleConvert = async () => {
     if (!proforma) return;
-    if (
-      !window.confirm(
-        `Convert ${proforma.proformaNumber} to a real Tax Invoice? This creates a new, separately numbered invoice — this proforma cannot be edited after this.`
-      )
-    ) {
-      return;
-    }
     try {
       const invoiceId = await convertMutation.mutateAsync(proforma.id);
       toast.success("Converted to Tax Invoice");
@@ -81,18 +76,12 @@ export default function ProformaDetailPage() {
 
   const handleDelete = async () => {
     if (!proforma || !id) return;
-    if (
-      window.confirm(
-        `Are you sure you want to delete proforma ${proforma.proformaNumber}? This action cannot be undone.`
-      )
-    ) {
-      try {
-        await deleteMutation.mutateAsync(id);
-        toast.success("Proforma deleted successfully");
-        navigate("/finance/proformas");
-      } catch {
-        toast.error("Failed to delete proforma");
-      }
+    try {
+      await deleteMutation.mutateAsync(id);
+      toast.success("Proforma deleted successfully");
+      navigate("/finance/proformas");
+    } catch {
+      toast.error("Failed to delete proforma");
     }
   };
 
@@ -134,7 +123,7 @@ export default function ProformaDetailPage() {
         </div>
         <div className="flex gap-2 flex-wrap">
           {!isConverted && proforma.status !== "CANCELLED" && (
-            <Button onClick={handleConvert} disabled={convertMutation.isPending}>
+            <Button onClick={() => setShowConvertConfirm(true)} disabled={convertMutation.isPending}>
               <ArrowRightLeft className="h-4 w-4 mr-2" />
               Convert to Tax Invoice
             </Button>
@@ -155,7 +144,7 @@ export default function ProformaDetailPage() {
                   Edit
                 </Button>
               </Link>
-              <Button variant="destructive" onClick={handleDelete} disabled={deleteMutation.isPending}>
+              <Button variant="destructive" onClick={() => setShowDeleteConfirm(true)} disabled={deleteMutation.isPending}>
                 <Trash2 className="h-4 w-4 mr-2" />
                 Delete
               </Button>
@@ -331,6 +320,39 @@ export default function ProformaDetailPage() {
         pdfUrl={pdfPreviewUrl}
         onDownload={handleDownloadPdf}
         isDownloading={isDownloading}
+      />
+
+      <ConfirmModal
+        isOpen={showConvertConfirm}
+        onClose={() => setShowConvertConfirm(false)}
+        onConfirm={() => {
+          setShowConvertConfirm(false);
+          handleConvert();
+        }}
+        title="Convert to Tax Invoice"
+        description={
+          <>
+            Convert <strong>{proforma.proformaNumber}</strong> to a real Tax Invoice? This creates a new, separately
+            numbered invoice — this proforma cannot be edited after this.
+          </>
+        }
+        variant="default"
+        confirmLabel="Convert"
+        pendingLabel="Converting..."
+        isPending={convertMutation.isPending}
+      />
+
+      <ConfirmModal
+        isOpen={showDeleteConfirm}
+        onClose={() => setShowDeleteConfirm(false)}
+        onConfirm={handleDelete}
+        title="Delete Proforma"
+        description={
+          <>
+            Are you sure you want to delete proforma <strong>{proforma.proformaNumber}</strong>? This action cannot be undone.
+          </>
+        }
+        isPending={deleteMutation.isPending}
       />
     </div>
   );

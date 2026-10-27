@@ -10,6 +10,7 @@ import {
   Input,
   Label,
   Modal,
+  ConfirmModal,
   Avatar,
   Badge,
   Skeleton,
@@ -49,6 +50,8 @@ export default function WithdrawalsPage() {
   const [editingEntry, setEditingEntry] = useState<LedgerEntry | null>(null);
   const [editAmount, setEditAmount] = useState("");
   const [editNotes, setEditNotes] = useState("");
+
+  const [deleteConfirm, setDeleteConfirm] = useState<LedgerEntry | null>(null);
 
   const { data: founders } = useFounders();
   const { data: founderFinances, isLoading: loadingFinances } = useFounderFinances();
@@ -200,11 +203,10 @@ export default function WithdrawalsPage() {
     }
   };
 
-  const handleDelete = async (entry: LedgerEntry) => {
+  const handleDelete = async () => {
+    if (!deleteConfirm) return;
+    const entry = deleteConfirm;
     const label = entry.kind === "WITHDRAWAL" ? "withdrawal" : "repayment";
-    if (!window.confirm(`Are you sure you want to delete this ${label} of ${formatCurrency(entry.amount)}? This action cannot be undone.`)) {
-      return;
-    }
     try {
       if (entry.kind === "WITHDRAWAL") {
         await deleteWithdrawalMutation.mutateAsync(entry.id);
@@ -212,11 +214,14 @@ export default function WithdrawalsPage() {
         await deleteRepaymentMutation.mutateAsync(entry.id);
       }
       toast.success(`${entry.kind === "WITHDRAWAL" ? "Withdrawal" : "Repayment"} deleted successfully`);
+      setDeleteConfirm(null);
     } catch (error) {
       console.error(`Error deleting ${label}:`, error);
       toast.error(`Failed to delete ${label}`);
     }
   };
+
+  const isDeleting = deleteWithdrawalMutation.isPending || deleteRepaymentMutation.isPending;
 
   // Loading states are checked individually in the JSX
 
@@ -371,7 +376,7 @@ export default function WithdrawalsPage() {
                           variant="ghost"
                           size="icon"
                           className="h-8 w-8 text-destructive hover:text-destructive"
-                          onClick={() => handleDelete(entry)}
+                          onClick={() => setDeleteConfirm(entry)}
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>
@@ -501,6 +506,20 @@ export default function WithdrawalsPage() {
           </div>
         )}
       </Modal>
+
+      <ConfirmModal
+        isOpen={!!deleteConfirm}
+        onClose={() => setDeleteConfirm(null)}
+        onConfirm={handleDelete}
+        title={`Delete ${deleteConfirm?.kind === "WITHDRAWAL" ? "Withdrawal" : "Repayment"}`}
+        description={
+          <>
+            Are you sure you want to delete this {deleteConfirm?.kind === "WITHDRAWAL" ? "withdrawal" : "repayment"}{" "}
+            of <strong>{deleteConfirm ? formatCurrency(deleteConfirm.amount) : ""}</strong>? This action cannot be undone.
+          </>
+        }
+        isPending={isDeleting}
+      />
     </div>
   );
 }

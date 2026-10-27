@@ -2,7 +2,7 @@ import { useState, useMemo } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Plus, Search, FileText, Eye, ArrowRightLeft, Trash2 } from "lucide-react";
-import { Button, Input, Card, CardContent, Badge, Skeleton, Modal, PdfPreviewModal, Pagination } from "@/components/ui";
+import { Button, Input, Card, CardContent, Badge, Skeleton, ConfirmModal, PdfPreviewModal, Pagination } from "@/components/ui";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { useProformas, useClients, useConvertProformaToInvoice, useDeleteProforma } from "@/hooks/useFirestore";
 import { usePagination } from "@/hooks/usePagination";
@@ -32,6 +32,7 @@ export default function ProformasPage() {
   const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
   const [previewingId, setPreviewingId] = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<ProformaInvoice | null>(null);
+  const [convertConfirm, setConvertConfirm] = useState<ProformaInvoice | null>(null);
 
   const { data: proformas, isLoading, error } = useProformas();
   const { data: clients } = useClients();
@@ -108,19 +109,12 @@ export default function ProformasPage() {
     }
   };
 
-  const handleConvert = async (e: React.MouseEvent, proforma: ProformaInvoice) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (
-      !window.confirm(
-        `Convert ${proforma.proformaNumber} to a real Tax Invoice? This creates a new, separately numbered invoice — the proforma itself cannot be edited after this.`
-      )
-    ) {
-      return;
-    }
+  const handleConvert = async () => {
+    if (!convertConfirm) return;
     try {
-      const invoiceId = await convertMutation.mutateAsync(proforma.id);
+      const invoiceId = await convertMutation.mutateAsync(convertConfirm.id);
       toast.success("Converted to Tax Invoice");
+      setConvertConfirm(null);
       navigate(`/finance/invoices/${invoiceId}`);
     } catch (error) {
       console.error("Failed to convert proforma:", error);
@@ -245,7 +239,11 @@ export default function ProformasPage() {
                         {proforma.status !== "CONVERTED" && proforma.status !== "CANCELLED" && (
                           <Button
                             size="sm"
-                            onClick={(e) => handleConvert(e, proforma)}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              setConvertConfirm(proforma);
+                            }}
                             disabled={convertMutation.isPending}
                           >
                             <ArrowRightLeft className="h-4 w-4 mr-1" />
@@ -293,20 +291,35 @@ export default function ProformasPage() {
         onDownload={handleDownloadFromPreview}
       />
 
-      {/* Delete Confirm */}
-      <Modal isOpen={!!deleteConfirm} onClose={() => setDeleteConfirm(null)} title="Delete Proforma">
-        <p className="text-sm text-muted-foreground mb-4">
-          Are you sure you want to delete <strong>{deleteConfirm?.proformaNumber}</strong>? This cannot be undone.
-        </p>
-        <div className="flex justify-end gap-2">
-          <Button variant="outline" onClick={() => setDeleteConfirm(null)}>
-            Cancel
-          </Button>
-          <Button variant="destructive" onClick={handleDelete} disabled={deleteMutation.isPending}>
-            {deleteMutation.isPending ? "Deleting..." : "Delete"}
-          </Button>
-        </div>
-      </Modal>
+      <ConfirmModal
+        isOpen={!!deleteConfirm}
+        onClose={() => setDeleteConfirm(null)}
+        onConfirm={handleDelete}
+        title="Delete Proforma"
+        description={
+          <>
+            Are you sure you want to delete <strong>{deleteConfirm?.proformaNumber}</strong>? This cannot be undone.
+          </>
+        }
+        isPending={deleteMutation.isPending}
+      />
+
+      <ConfirmModal
+        isOpen={!!convertConfirm}
+        onClose={() => setConvertConfirm(null)}
+        onConfirm={handleConvert}
+        title="Convert to Tax Invoice"
+        description={
+          <>
+            Convert <strong>{convertConfirm?.proformaNumber}</strong> to a real Tax Invoice? This creates a new,
+            separately numbered invoice — the proforma itself cannot be edited after this.
+          </>
+        }
+        variant="default"
+        confirmLabel="Convert"
+        pendingLabel="Converting..."
+        isPending={convertMutation.isPending}
+      />
     </div>
   );
 }

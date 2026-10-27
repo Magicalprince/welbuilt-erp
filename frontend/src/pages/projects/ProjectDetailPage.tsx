@@ -31,6 +31,7 @@ import {
   Checkbox,
   Skeleton,
   Modal,
+  ConfirmModal,
   Input,
   Label,
 } from "@/components/ui";
@@ -56,6 +57,7 @@ export default function ProjectDetailPage() {
   // Modal state for adding MVP feature
   const [showMVPModal, setShowMVPModal] = useState(false);
   const [newMVPName, setNewMVPName] = useState("");
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   const { data: project, isLoading: loadingProject } = useProject(id || "");
   const { data: client } = useClient(project?.clientId || "");
@@ -145,19 +147,12 @@ export default function ProjectDetailPage() {
 
   const handleDelete = async () => {
     if (!project || !id) return;
-
-    if (
-      window.confirm(
-        `Are you sure you want to delete "${project.title}"? This action cannot be undone.`
-      )
-    ) {
-      try {
-        await deleteProjectMutation.mutateAsync(id);
-        toast.success("Project deleted successfully");
-        navigate("/projects");
-      } catch {
-        toast.error("Failed to delete project");
-      }
+    try {
+      await deleteProjectMutation.mutateAsync(id);
+      toast.success("Project deleted successfully");
+      navigate("/projects");
+    } catch {
+      toast.error("Failed to delete project");
     }
   };
 
@@ -210,7 +205,7 @@ export default function ProjectDetailPage() {
               Edit
             </Button>
           </Link>
-          <Button variant="destructive" onClick={handleDelete}>
+          <Button variant="destructive" onClick={() => setShowDeleteConfirm(true)} disabled={deleteProjectMutation.isPending}>
             <Trash2 className="h-4 w-4 mr-2" />
             Delete
           </Button>
@@ -609,6 +604,19 @@ export default function ProjectDetailPage() {
           </div>
         </div>
       </Modal>
+
+      <ConfirmModal
+        isOpen={showDeleteConfirm}
+        onClose={() => setShowDeleteConfirm(false)}
+        onConfirm={handleDelete}
+        title="Delete Project"
+        description={
+          <>
+            Are you sure you want to delete <strong>&quot;{project?.title}&quot;</strong>? This action cannot be undone.
+          </>
+        }
+        isPending={deleteProjectMutation.isPending}
+      />
     </div>
   );
 }

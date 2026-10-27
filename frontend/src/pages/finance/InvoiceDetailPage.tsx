@@ -1,7 +1,7 @@
 import { useState, useMemo } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, Download, Send, CheckCircle2, CreditCard, Pencil, Trash2, Eye } from "lucide-react";
-import { Button, Card, CardContent, CardHeader, CardTitle, Badge, Progress, Modal, PdfPreviewModal, Select, Skeleton } from "@/components/ui";
+import { Button, Card, CardContent, CardHeader, CardTitle, Badge, Progress, Modal, PdfPreviewModal, ConfirmModal, Select, Skeleton } from "@/components/ui";
 import { formatCurrency, formatDate, cn } from "@/lib/utils";
 import { useInvoice, useClient, useProject, useRecordPayment, useUpdateInvoice, useDeleteInvoice } from "@/hooks/useFirestore";
 import { generateAndDownloadInvoicePdf, generateInvoicePdfUrl } from "@/services/invoicePdfService";
@@ -29,6 +29,7 @@ export default function InvoiceDetailPage() {
 
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [showMarkPaidModal, setShowMarkPaidModal] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showPreviewModal, setShowPreviewModal] = useState(false);
   const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
   const [isPreviewLoading, setIsPreviewLoading] = useState(false);
@@ -123,18 +124,12 @@ export default function InvoiceDetailPage() {
 
   const handleDelete = async () => {
     if (!invoice || !id) return;
-    if (
-      window.confirm(
-        `Are you sure you want to delete invoice ${invoice.invoiceNumber}? This action cannot be undone.`
-      )
-    ) {
-      try {
-        await deleteInvoiceMutation.mutateAsync(id);
-        toast.success("Invoice deleted successfully");
-        navigate("/finance/invoices");
-      } catch {
-        toast.error("Failed to delete invoice");
-      }
+    try {
+      await deleteInvoiceMutation.mutateAsync(id);
+      toast.success("Invoice deleted successfully");
+      navigate("/finance/invoices");
+    } catch {
+      toast.error("Failed to delete invoice");
     }
   };
 
@@ -201,7 +196,7 @@ export default function InvoiceDetailPage() {
               Edit
             </Button>
           </Link>
-          <Button variant="destructive" onClick={handleDelete} disabled={deleteInvoiceMutation.isPending}>
+          <Button variant="destructive" onClick={() => setShowDeleteConfirm(true)} disabled={deleteInvoiceMutation.isPending}>
             <Trash2 className="h-4 w-4 mr-2" />
             Delete
           </Button>
@@ -534,6 +529,19 @@ export default function InvoiceDetailPage() {
         pdfUrl={pdfPreviewUrl}
         onDownload={handleDownloadPdf}
         isDownloading={isDownloading}
+      />
+
+      <ConfirmModal
+        isOpen={showDeleteConfirm}
+        onClose={() => setShowDeleteConfirm(false)}
+        onConfirm={handleDelete}
+        title="Delete Invoice"
+        description={
+          <>
+            Are you sure you want to delete invoice <strong>{invoice.invoiceNumber}</strong>? This action cannot be undone.
+          </>
+        }
+        isPending={deleteInvoiceMutation.isPending}
       />
     </div>
   );

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { ArrowLeft, TrendingUp, TrendingDown, IndianRupee, Trash2 } from "lucide-react";
-import { Button, Card, CardContent, Badge, Label, Input, Select, Textarea } from "@/components/ui";
+import { Button, Card, CardContent, Badge, Label, Input, Select, Textarea, ConfirmModal } from "@/components/ui";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { useWorkshop, useUpdateWorkshop, useDeleteWorkshop } from "@/hooks/useLeads";
 import { getWorkshopFinancials } from "@/services/workshopService";
@@ -63,6 +63,7 @@ export default function WorkshopDetailView({ workshopId, onBack }: WorkshopDetai
   const deleteMutation = useDeleteWorkshop();
 
   const [form, setForm] = useState<DetailFormState | null>(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   useEffect(() => {
     if (workshop) setForm(buildDetailForm(workshop));
@@ -82,13 +83,6 @@ export default function WorkshopDetailView({ workshopId, onBack }: WorkshopDetai
   const { expenseForm } = form;
 
   const handleDelete = async () => {
-    if (
-      !window.confirm(
-        `Are you sure you want to delete "${workshop.workshopTitle}"? This action cannot be undone.`
-      )
-    ) {
-      return;
-    }
     try {
       await deleteMutation.mutateAsync(workshop.id);
       toast.success("Workshop deleted successfully");
@@ -190,7 +184,7 @@ export default function WorkshopDetailView({ workshopId, onBack }: WorkshopDetai
             </p>
           </div>
         </div>
-        <Button variant="destructive" onClick={handleDelete} disabled={deleteMutation.isPending}>
+        <Button variant="destructive" onClick={() => setShowDeleteConfirm(true)} disabled={deleteMutation.isPending}>
           <Trash2 className="h-4 w-4 mr-2" />
           Delete
         </Button>
@@ -335,6 +329,19 @@ export default function WorkshopDetailView({ workshopId, onBack }: WorkshopDetai
           </div>
         </CardContent>
       </Card>
+
+      <ConfirmModal
+        isOpen={showDeleteConfirm}
+        onClose={() => setShowDeleteConfirm(false)}
+        onConfirm={handleDelete}
+        title="Delete Workshop"
+        description={
+          <>
+            Are you sure you want to delete <strong>&quot;{workshop.workshopTitle}&quot;</strong>? This action cannot be undone.
+          </>
+        }
+        isPending={deleteMutation.isPending}
+      />
     </div>
   );
 }

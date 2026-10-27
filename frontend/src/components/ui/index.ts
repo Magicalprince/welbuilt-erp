@@ -8,6 +8,7 @@ export { Badge, type BadgeProps } from "./Badge";
 export { Avatar } from "./Avatar";
 export { Modal } from "./Modal";
 export { PdfPreviewModal } from "./PdfPreviewModal";
+export { ConfirmModal } from "./ConfirmModal";
 export { Progress } from "./Progress";
 export { Skeleton, SkeletonCard, SkeletonTable } from "./Skeleton";
 export { Checkbox, type CheckboxProps } from "./Checkbox";

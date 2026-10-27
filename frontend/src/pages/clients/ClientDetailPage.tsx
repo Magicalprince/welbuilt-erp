@@ -1,7 +1,7 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Link, useParams, useNavigate } from "react-router-dom";
 import { ArrowLeft, Edit, Mail, Phone, MapPin, Trash2, FileText, Plus } from "lucide-react";
-import { Button, Card, CardContent, CardHeader, CardTitle, Badge, Tabs, TabsList, TabsTrigger, TabsContent, Avatar, Skeleton } from "@/components/ui";
+import { Button, Card, CardContent, CardHeader, CardTitle, Badge, Tabs, TabsList, TabsTrigger, TabsContent, Avatar, Skeleton, ConfirmModal } from "@/components/ui";
 import { formatCurrency, formatDate, getRelativeTime } from "@/lib/utils";
 import { useClient, useProjectsByClient, useInvoicesByClient, useNotesByClient, useDocumentsByClient, useDeleteClient } from "@/hooks/useFirestore";
 import type { ClientStatus, ProjectStatus, InvoiceStatus } from "@/types";
@@ -17,6 +17,7 @@ export default function ClientDetailPage() {
   const { data: notes } = useNotesByClient(id || "");
   const { data: documents } = useDocumentsByClient(id || "");
   const deleteClientMutation = useDeleteClient();
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   const financials = useMemo(() => {
     if (!invoices) return { paid: 0, pending: 0, totalInvoices: 0 };
@@ -33,15 +34,12 @@ export default function ClientDetailPage() {
 
   const handleDelete = async () => {
     if (!client || !id) return;
-
-    if (window.confirm(`Are you sure you want to delete ${client.companyName}? This action cannot be undone.`)) {
-      try {
-        await deleteClientMutation.mutateAsync(id);
-        toast.success("Client deleted successfully");
-        navigate("/clients");
-      } catch {
-        toast.error("Failed to delete client");
-      }
+    try {
+      await deleteClientMutation.mutateAsync(id);
+      toast.success("Client deleted successfully");
+      navigate("/clients");
+    } catch {
+      toast.error("Failed to delete client");
     }
   };
 
@@ -88,7 +86,7 @@ export default function ClientDetailPage() {
               Edit
             </Button>
           </Link>
-          <Button variant="destructive" onClick={handleDelete}>
+          <Button variant="destructive" onClick={() => setShowDeleteConfirm(true)} disabled={deleteClientMutation.isPending}>
             <Trash2 className="h-4 w-4 mr-2" />
             Delete
           </Button>
@@ -333,6 +331,19 @@ export default function ClientDetailPage() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      <ConfirmModal
+        isOpen={showDeleteConfirm}
+        onClose={() => setShowDeleteConfirm(false)}
+        onConfirm={handleDelete}
+        title="Delete Client"
+        description={
+          <>
+            Are you sure you want to delete <strong>{client.companyName}</strong>? This action cannot be undone.
+          </>
+        }
+        isPending={deleteClientMutation.isPending}
+      />
     </div>
   );
 }
