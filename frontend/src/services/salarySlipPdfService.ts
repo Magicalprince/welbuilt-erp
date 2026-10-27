@@ -444,8 +444,8 @@ export async function generateSalarySlipPdf(data: SalarySlipData): Promise<Uint8
 
   // Signature: sized from its own aspect ratio, drawn opaque over the
   // lower-third of the seal.
-  const SIG_MAX_H = 28;
-  const SIG_MAX_W = 72;
+  const SIG_MAX_H = 42;
+  const SIG_MAX_W = 100;
   let sigImgBottomY = sealTopY - SEAL_H * 0.55;
   if (signatureImg) {
     const naturalDims = signatureImg.scale(1);
