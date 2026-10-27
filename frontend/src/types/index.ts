@@ -504,6 +504,13 @@ export interface Quotation {
 }
 
 // Company Settings
+export interface FounderPayrollInfo {
+  pan?: string;
+  bankAccountNumber?: string;
+  bankName?: string;
+  ifscCode?: string;
+}
+
 export interface CompanySettings {
   companyName: string;
   companyEmail: string;
@@ -512,6 +519,7 @@ export interface CompanySettings {
   companyLogo?: string;
   gstNumber?: string;
   panNumber?: string;
+  tanNumber?: string;
   bankDetails?: {
     bankName: string;
     accountNumber: string;
@@ -524,6 +532,8 @@ export interface CompanySettings {
   currencySymbol: string;
   dateFormat: string;
   fiscalYearStart: number;
+  ramachandraaSignatureUrl?: string;
+  founderPayrollInfo?: Record<string, FounderPayrollInfo>;
   updatedAt: Date;
 }
 

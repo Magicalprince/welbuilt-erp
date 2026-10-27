@@ -1,7 +1,7 @@
 import { useState, useMemo } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
-import { ArrowLeft, Users, Pencil, Trash2, Download, Settings2, FileSignature, Upload } from "lucide-react";
+import { ArrowLeft, Users, Pencil, Trash2, Download, Settings2, FileSignature, Upload, CreditCard } from "lucide-react";
 import {
   Button,
   Card,
@@ -28,10 +28,11 @@ import {
   useUpdateSalaryRecord,
   useDeleteSalaryRecord,
   useCompanySettings,
+  useUpdateCompanySettings,
 } from "@/hooks/useFirestore";
 import { useAuthStore } from "@/store/authStore";
 import { generateAndDownloadSalarySlip, type SignatureKey } from "@/services/salarySlipPdfService";
-import { updateRamachandraaSignature } from "@/services/settingsService";
+import type { FounderPayrollInfo } from "@/services/settingsService";
 import { uploadFileToR2 } from "@/services/r2Service";
 import toast from "react-hot-toast";
 import type { SalaryRecord } from "@/types";
@@ -67,6 +68,7 @@ export default function SalaryPage() {
   const markTakenMutation = useMarkSalaryTaken();
   const updateRecordMutation = useUpdateSalaryRecord();
   const deleteRecordMutation = useDeleteSalaryRecord();
+  const updateCompanySettingsMutation = useUpdateCompanySettings();
 
   const [showConfigModal, setShowConfigModal] = useState(false);
   const [configAmount, setConfigAmount] = useState("");
@@ -103,6 +105,16 @@ export default function SalaryPage() {
 
   const [isUploadingSignature, setIsUploadingSignature] = useState(false);
 
+  // Per-founder PAN + personal salary bank account, shown on slips —
+  // bank-loan-critical per research, editable here since there's no
+  // other settings surface for this yet.
+  const [editingPayrollEmail, setEditingPayrollEmail] = useState<string | null>(null);
+  const [payrollPan, setPayrollPan] = useState("");
+  const [payrollBankAccount, setPayrollBankAccount] = useState("");
+  const [payrollBankName, setPayrollBankName] = useState("");
+  const [payrollIfsc, setPayrollIfsc] = useState("");
+  const [isSavingPayroll, setIsSavingPayroll] = useState(false);
+
   const founderOptions = useMemo(() => {
     if (!founders) return [];
     return founders.map((f) => ({ value: f.id, label: f.name }));
@@ -123,6 +135,20 @@ export default function SalaryPage() {
     const founder = founders?.find((f) => f.id === founderId);
     const staticInfo = FOUNDERS.find((f) => f.name === founder?.name);
     return { founder, staticInfo };
+  };
+
+  // Year-to-date gross for one founder, up to and including a given
+  // month — the sum of every SalaryRecord in the same calendar year at
+  // or before that month. Only meaningful for a real record (the mock
+  // generator has no history to sum, so it omits ytdGross entirely).
+  const computeYtdGross = (founderId: string, uptoMonthKey: string): number => {
+    if (!monthGroups) return 0;
+    const uptoYear = uptoMonthKey.split("-")[0];
+    return monthGroups
+      .filter((g) => g.month.startsWith(uptoYear) && g.month <= uptoMonthKey)
+      .flatMap((g) => g.records)
+      .filter((r) => r.founderId === founderId)
+      .reduce((sum, r) => sum + r.amount, 0);
   };
 
   const handleOpenConfig = () => {
@@ -233,6 +259,8 @@ export default function SalaryPage() {
         year,
         amount: slipRecord.amount,
         signatureKey: slipSignature,
+        founderEmail: staticInfo.email,
+        ytdGross: computeYtdGross(slipRecord.founderId, slipRecord.month),
       });
       toast.success("Salary slip downloaded");
       setSlipRecord(null);
@@ -261,7 +289,7 @@ export default function SalaryPage() {
     }
     setIsGeneratingMock(true);
     try {
-      const { founder } = founderInfo(mockFounderId);
+      const { founder, staticInfo } = founderInfo(mockFounderId);
       await generateAndDownloadSalarySlip({
         founderName: founder?.name || "Founder",
         designation: mockDesignation,
@@ -271,6 +299,10 @@ export default function SalaryPage() {
         year: Number(mockYear),
         amount: Number(mockAmount),
         signatureKey: mockSignature,
+        founderEmail: staticInfo?.email,
+        // No ytdGross — a mock slip has no real salary history to sum,
+        // so the YTD row is omitted entirely rather than showing a
+        // misleading figure.
       });
       toast.success("Mock salary slip downloaded");
     } catch (error) {
@@ -281,13 +313,49 @@ export default function SalaryPage() {
     }
   };
 
+  const handleOpenPayrollEdit = (email: string) => {
+    const existing = companySettings?.founderPayrollInfo?.[email.toLowerCase()];
+    setPayrollPan(existing?.pan || "");
+    setPayrollBankAccount(existing?.bankAccountNumber || "");
+    setPayrollBankName(existing?.bankName || "");
+    setPayrollIfsc(existing?.ifscCode || "");
+    setEditingPayrollEmail(email);
+  };
+
+  const handleSavePayroll = async () => {
+    if (!editingPayrollEmail) return;
+    setIsSavingPayroll(true);
+    try {
+      const emailKey = editingPayrollEmail.toLowerCase();
+      const data: FounderPayrollInfo = {
+        pan: payrollPan.trim() || undefined,
+        bankAccountNumber: payrollBankAccount.trim() || undefined,
+        bankName: payrollBankName.trim() || undefined,
+        ifscCode: payrollIfsc.trim() || undefined,
+      };
+      await updateCompanySettingsMutation.mutateAsync({
+        founderPayrollInfo: {
+          ...companySettings?.founderPayrollInfo,
+          [emailKey]: { ...companySettings?.founderPayrollInfo?.[emailKey], ...data },
+        },
+      });
+      toast.success("Payroll details updated");
+      setEditingPayrollEmail(null);
+    } catch (error) {
+      console.error("Failed to update payroll details:", error);
+      toast.error("Failed to update payroll details");
+    } finally {
+      setIsSavingPayroll(false);
+    }
+  };
+
   const handleUploadSignature = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     setIsUploadingSignature(true);
     try {
       const { fileUrl } = await uploadFileToR2(file, "settings/signatures");
-      await updateRamachandraaSignature(fileUrl);
+      await updateCompanySettingsMutation.mutateAsync({ ramachandraaSignatureUrl: fileUrl });
       toast.success("Signature uploaded");
     } catch (error) {
       console.error("Failed to upload signature:", error);
@@ -472,6 +540,40 @@ export default function SalaryPage() {
         </CardContent>
       </Card>
 
+      {/* Payroll details — PAN + personal salary bank account per founder,
+          shown on slips. Bank-loan-critical per research: the account
+          printed must match what the applicant's bank statements show. */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <CreditCard className="h-5 w-5" />
+            Payroll Details
+          </CardTitle>
+          <p className="text-sm text-muted-foreground">
+            PAN and salary bank account shown on each founder&apos;s slip. Until filled in, slips show a clearly-marked placeholder.
+          </p>
+        </CardHeader>
+        <CardContent className="grid gap-4 md:grid-cols-3">
+          {FOUNDERS.map((f) => {
+            const info = companySettings?.founderPayrollInfo?.[f.email.toLowerCase()];
+            const isComplete = info?.pan && info?.bankAccountNumber && info?.bankName && info?.ifscCode;
+            return (
+              <div key={f.email} className="p-4 rounded-lg border">
+                <p className="font-medium text-sm mb-1">{f.name}</p>
+                {isComplete ? (
+                  <p className="text-xs text-green-600 mb-2">PAN &amp; bank details on file</p>
+                ) : (
+                  <p className="text-xs text-destructive mb-2">Incomplete — slip will show placeholders</p>
+                )}
+                <Button variant="outline" size="sm" onClick={() => handleOpenPayrollEdit(f.email)}>
+                  Edit Details
+                </Button>
+              </div>
+            );
+          })}
+        </CardContent>
+      </Card>
+
       {/* Mock Slip Generator — no financial effect */}
       <Card className="border-dashed border-amber-500/40 bg-amber-500/5">
         <CardHeader>
@@ -639,6 +741,38 @@ export default function SalaryPage() {
             </div>
           </div>
         )}
+      </Modal>
+
+      {/* Edit Payroll Details Modal */}
+      <Modal isOpen={!!editingPayrollEmail} onClose={() => setEditingPayrollEmail(null)} title="Edit Payroll Details">
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label>PAN</Label>
+            <Input value={payrollPan} onChange={(e) => setPayrollPan(e.target.value.toUpperCase())} placeholder="e.g. ABCDE1234F" maxLength={10} />
+          </div>
+          <div className="space-y-2">
+            <Label>Bank Account Number</Label>
+            <Input value={payrollBankAccount} onChange={(e) => setPayrollBankAccount(e.target.value)} placeholder="Salary account number" />
+          </div>
+          <div className="grid gap-4 grid-cols-2">
+            <div className="space-y-2">
+              <Label>Bank Name</Label>
+              <Input value={payrollBankName} onChange={(e) => setPayrollBankName(e.target.value)} placeholder="e.g. HDFC Bank" />
+            </div>
+            <div className="space-y-2">
+              <Label>IFSC Code</Label>
+              <Input value={payrollIfsc} onChange={(e) => setPayrollIfsc(e.target.value.toUpperCase())} placeholder="e.g. HDFC0001234" maxLength={11} />
+            </div>
+          </div>
+          <div className="flex gap-3 justify-end pt-4 border-t">
+            <Button variant="outline" onClick={() => setEditingPayrollEmail(null)}>
+              Cancel
+            </Button>
+            <Button onClick={handleSavePayroll} disabled={isSavingPayroll}>
+              {isSavingPayroll ? "Saving..." : "Save"}
+            </Button>
+          </div>
+        </div>
       </Modal>
 
       <ConfirmModal

@@ -1,38 +1,12 @@
 import { doc, setDoc, Timestamp } from "firebase/firestore";
 import { db } from "@/config/firebase";
+import type { CompanySettings, FounderPayrollInfo } from "@/types";
 import {
   COLLECTIONS,
   getDocument,
 } from "./firestore";
 
-export interface CompanySettings {
-  companyName: string;
-  companyEmail: string;
-  companyPhone?: string;
-  companyAddress?: string;
-  companyLogo?: string; // Optional URL
-  gstNumber?: string;
-  panNumber?: string;
-  bankDetails?: {
-    bankName: string;
-    accountNumber: string;
-    ifscCode: string;
-    accountHolderName: string;
-  };
-  invoicePrefix: string;
-  invoiceTerms?: string;
-  currency: string;
-  currencySymbol: string;
-  dateFormat: string;
-  fiscalYearStart: number; // Month (1-12)
-  // Ramachandraa's signature image, uploaded via the Salary page — no such
-  // asset existed in the codebase before (only Baranitharan's, at the
-  // fixed /images/sparks/signature.png path reused as-is). Optional until
-  // uploaded; salarySlipPdfService.ts falls back to no signature image if
-  // selected without one.
-  ramachandraaSignatureUrl?: string;
-  updatedAt: Date;
-}
+export type { CompanySettings, FounderPayrollInfo };
 
 export interface FirestoreSettings {
   companyName: string;
@@ -42,6 +16,7 @@ export interface FirestoreSettings {
   companyLogo?: string;
   gstNumber?: string;
   panNumber?: string;
+  tanNumber?: string;
   bankDetails?: {
     bankName: string;
     accountNumber: string;
@@ -55,6 +30,7 @@ export interface FirestoreSettings {
   dateFormat: string;
   fiscalYearStart: number;
   ramachandraaSignatureUrl?: string;
+  founderPayrollInfo?: Record<string, FounderPayrollInfo>;
   updatedAt: Timestamp;
 }
 
@@ -128,13 +104,6 @@ export async function updateBankDetails(
   bankDetails: CompanySettings["bankDetails"]
 ): Promise<void> {
   await updateCompanySettings({ bankDetails });
-}
-
-// Update Ramachandraa's salary-slip signature image URL (uploaded via the
-// Salary page). Baranitharan's signature is a fixed existing asset and
-// needs no equivalent setter.
-export async function updateRamachandraaSignature(url: string): Promise<void> {
-  await updateCompanySettings({ ramachandraaSignatureUrl: url });
 }
 
 // Update invoice settings
