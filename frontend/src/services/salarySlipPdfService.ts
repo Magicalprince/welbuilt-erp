@@ -4,20 +4,31 @@ import { saveAs } from "file-saver";
 import { getCompanySettings } from "./settingsService";
 import { amountInWords } from "@/lib/numberToWords";
 
-// Bank-loan-submittable salary slip — same classic bordered black-on-white
-// layout family as invoicePdfService.ts (page size, margins, font
-// embedding, draw-helper conventions), researched against what Indian
+// Bank-loan-submittable salary slip — classic bordered black-on-white
+// layout family as invoicePdfService.ts, researched against what Indian
 // banks (SBI, ICICI) actually check when a payslip is submitted as income
-// proof: company header, employee details matching KYC, pay period,
-// itemized earnings, net pay in figures AND words, bank credit details,
-// and a real signature+seal block — NOT the "computer-generated, no
-// signature required" convention regular invoices use, since a
-// self-issued payslip from one's own company needs more credibility, not
-// less. No deductions table: this company has no PF/ESI (well under the
-// 20-employee mandatory-registration threshold) and salary is below the
-// taxable slab, so gross = net and the row is omitted entirely rather
-// than shown as "N/A" or ₹0 (the more credible convention for a small
-// company's payslip, per research).
+// proof, and cross-checked against real payslip templates (Zoho Payroll,
+// Tally, Naukri, Angel One, Adobe's payslip guide). Three structural fixes
+// over the first draft, all evidence-based:
+//
+// 1. Earnings|Deductions is a universal two-column convention even when
+//    Deductions is empty — every real-world template surveyed shows a
+//    "Deductions: NIL" row rather than omitting the column. Keeps the "no
+//    fake ₹0 line items" principle (still no PF/ESI/TDS line items, this
+//    company is well under the 20-employee PF threshold) while matching
+//    the table SHAPE a bank loan officer expects to see.
+// 2. A company seal renders at roughly 2-3in (144-216pt) on a real
+//    business document, not 34pt (0.47in) — illegibly small at the
+//    previous size. Signature and seal are now sized independently:
+//    signature by its own aspect ratio capped at a readable width, seal
+//    large and translucent behind it in the classic "signed over the
+//    stamp" layering.
+// 3. One continuous bordered frame from the header rule to the footer
+//    bar (the Tally/Zoho convention this codebase's own
+//    invoicePdfService.ts already uses) instead of separate floating
+//    boxes with gaps between them, plus a drawn footer bar instead of
+//    trailing-off floating text, so the page reads as filled-out rather
+//    than sparse.
 
 const COMPANY_NAME = "Welbuilt AI Solutions Pvt Ltd";
 const COMPANY_ADDRESS_LINES = [
@@ -33,6 +44,7 @@ const COLORS = {
   slate: rgb(0.3, 0.3, 0.3),
   line: rgb(0, 0, 0),
   headerBg: rgb(0.93, 0.93, 0.93),
+  footerBg: rgb(0.93, 0.93, 0.93),
 };
 
 const PAGE_W = 595.28;
@@ -49,6 +61,10 @@ function formatShortDate(date: Date): string {
 
 function formatMoney(amount: number): string {
   return amount.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function monthAbbrev(month: string): string {
+  return month.slice(0, 3).toUpperCase();
 }
 
 async function fetchBytes(url: string): Promise<ArrayBuffer | null> {
@@ -128,10 +144,14 @@ export async function generateSalarySlipPdf(data: SalarySlipData): Promise<Uint8
     page.drawLine({ start: { x: xPos, y: y1 }, end: { x: xPos, y: y2 }, thickness: 0.75, color: COLORS.line });
   };
 
-  // ── Header: logo, address below it, title + pay period ────────────────
-  const LOGO_H = 34;
+  // ── Header: logo, address below it with real breathing room ───────────
+  // Logo scaled smaller (26pt, down from 34pt) and given a 10pt gap
+  // before the address starts (up from 4pt) — the previous combination
+  // of a taller logo box and a thin gap let the wordmark's own internal
+  // padding visually crowd the address text directly beneath it.
+  const LOGO_H = 26;
   const logoTopY = y - 6;
-  let headerY = logoTopY - LOGO_H - 4;
+  let headerY = logoTopY - LOGO_H - 10;
   if (logoImg) {
     const naturalDims = logoImg.scale(1);
     const scale = LOGO_H / naturalDims.height;
@@ -140,22 +160,29 @@ export async function generateSalarySlipPdf(data: SalarySlipData): Promise<Uint8
   }
   COMPANY_ADDRESS_LINES.forEach((line) => {
     page.drawText(line, { x: MARGIN, y: headerY, size: 8, font: regular, color: COLORS.slate });
-    headerY -= 11;
+    headerY -= 12;
   });
   if (gstin) {
     page.drawText(`GSTIN/UIN: ${gstin}`, { x: MARGIN, y: headerY, size: 8, font: regular, color: COLORS.slate });
-    headerY -= 11;
+    headerY -= 12;
   }
 
   const metaTop = headerY - 10;
+  const slipNumber = `SAL-${data.employeeId}-${monthAbbrev(data.month)}${data.year}`;
   drawCentered("SALARY SLIP", PAGE_W / 2, metaTop, 14, bold);
-  drawRightAligned(`Pay Period: ${data.month} ${data.year}`, MARGIN + CONTENT_W, metaTop, 8.5, regular, COLORS.slate);
-  drawRightAligned(`Generated: ${formatShortDate(new Date())}`, MARGIN + CONTENT_W, metaTop - 12, 8.5, regular, COLORS.slate);
+  drawRightAligned(`Slip No: ${slipNumber}`, MARGIN + CONTENT_W, metaTop, 8.5, regular, COLORS.slate);
+  drawRightAligned(`Pay Period: ${data.month} ${data.year}`, MARGIN + CONTENT_W, metaTop - 12, 8.5, regular, COLORS.slate);
+  drawRightAligned(`Generated: ${formatShortDate(new Date())}`, MARGIN + CONTENT_W, metaTop - 24, 8.5, regular, COLORS.slate);
 
-  y = metaTop - 24;
-  hLine(y);
-  y -= 4;
-  const outerTop = y;
+  y = metaTop - 38;
+
+  // ── Unified outer frame — one continuous border from here down to the
+  // footer bar, matching invoicePdfService.ts's own Tally/Zoho-style
+  // convention, instead of separate floating boxes with gaps between
+  // them. vLines for the left/right edges are drawn once at the end,
+  // spanning the whole frame; hLines close off each internal section. ──
+  const frameTop = y;
+  hLine(frameTop);
 
   // ── Employee details grid — two columns of label/value pairs ──────────
   const employeeRows: [string, string][] = [
@@ -165,79 +192,82 @@ export async function generateSalarySlipPdf(data: SalarySlipData): Promise<Uint8
     ["Date of Joining", formatShortDate(data.dateOfJoining)],
     ["Pay Period", `${data.month} ${data.year}`],
   ];
-  const rowH = 17;
+  const rowH = 18;
   const colSplit = CONTENT_W * 0.35;
-  let rowY = outerTop;
+  let rowY = frameTop;
   employeeRows.forEach(([label, value], i) => {
-    page.drawText(label, { x: MARGIN + 8, y: rowY - 12, size: 8.5, font: regular, color: COLORS.slate });
-    page.drawText(value, { x: MARGIN + colSplit + 8, y: rowY - 12, size: 9.5, font: bold });
+    page.drawText(label, { x: MARGIN + 8, y: rowY - 13, size: 8.5, font: regular, color: COLORS.slate });
+    page.drawText(value, { x: MARGIN + colSplit + 8, y: rowY - 13, size: 9.5, font: bold });
     if (i < employeeRows.length - 1) hLine(rowY - rowH, MARGIN, MARGIN + CONTENT_W);
     rowY -= rowH;
   });
   const employeeBottom = rowY;
-  hLine(outerTop);
   hLine(employeeBottom);
-  vLine(MARGIN, outerTop, employeeBottom);
-  vLine(MARGIN + CONTENT_W, outerTop, employeeBottom);
-  vLine(MARGIN + colSplit, outerTop, employeeBottom);
+  vLine(MARGIN + colSplit, frameTop, employeeBottom);
 
-  y = employeeBottom - 16;
+  y = employeeBottom;
 
-  // ── Earnings table — single "Basic Salary" row, no deductions table.
-  // Gross = net: omitted entirely rather than shown as "N/A"/₹0, the more
-  // credible convention for a small company with no PF/ESI registration. ──
-  const colDescDivX = MARGIN + CONTENT_W - 150;
-  const colAmountRightX = MARGIN + CONTENT_W - 8;
+  // ── Earnings | Deductions two-column table — the universal convention
+  // real payslip templates use even when Deductions is empty, with a
+  // single "Deductions: NIL" summary row rather than fake ₹0 line items
+  // (this company has no PF/ESI, well under the 20-employee threshold,
+  // and salary is below the taxable slab). Matches the table SHAPE a
+  // bank loan officer expects even though the Deductions side is empty. ──
+  const colMidX = MARGIN + CONTENT_W / 2;
+  const earnAmountRightX = colMidX - 8;
+  const dedAmountRightX = MARGIN + CONTENT_W - 8;
   const tableTop = y;
-  const headerH = 20;
-  page.drawRectangle({ x: MARGIN, y: tableTop - headerH, width: CONTENT_W, height: headerH, color: COLORS.headerBg });
-  hLine(tableTop, MARGIN, MARGIN + CONTENT_W);
+  const colHeaderH = 20;
+  page.drawRectangle({ x: MARGIN, y: tableTop - colHeaderH, width: CONTENT_W, height: colHeaderH, color: COLORS.headerBg });
   page.drawText("Earnings", { x: MARGIN + 8, y: tableTop - 14, size: 8.5, font: bold });
-  drawRightAligned("Amount", colAmountRightX, tableTop - 14, 8.5, bold);
-  vLine(MARGIN, tableTop, tableTop - headerH);
-  vLine(MARGIN + CONTENT_W, tableTop, tableTop - headerH);
-  vLine(colDescDivX, tableTop, tableTop - headerH);
+  drawRightAligned("Amount", earnAmountRightX, tableTop - 14, 8.5, bold);
+  page.drawText("Deductions", { x: colMidX + 8, y: tableTop - 14, size: 8.5, font: bold });
+  drawRightAligned("Amount", dedAmountRightX, tableTop - 14, 8.5, bold);
+  hLine(tableTop, MARGIN, MARGIN + CONTENT_W);
+  vLine(colMidX, tableTop, tableTop - colHeaderH);
 
-  const earningsRowTop = tableTop - headerH;
-  page.drawText("Basic Salary", { x: MARGIN + 8, y: earningsRowTop - 15, size: 9.5, font: regular });
-  drawRightAligned(formatMoney(data.amount), colAmountRightX, earningsRowTop - 15, 9.5, regular);
-  const earningsRowBottom = earningsRowTop - 24;
-  hLine(earningsRowBottom);
-  vLine(MARGIN, earningsRowTop, earningsRowBottom);
-  vLine(MARGIN + CONTENT_W, earningsRowTop, earningsRowBottom);
-  vLine(colDescDivX, earningsRowTop, earningsRowBottom);
+  const dataRowTop = tableTop - colHeaderH;
+  const dataRowH = 26;
+  page.drawText("Basic Salary", { x: MARGIN + 8, y: dataRowTop - 16, size: 9.5, font: regular });
+  drawRightAligned(formatMoney(data.amount), earnAmountRightX, dataRowTop - 16, 9.5, regular);
+  page.drawText("NIL", { x: colMidX + 8, y: dataRowTop - 16, size: 9.5, font: regular, color: COLORS.slate });
+  drawRightAligned("0.00", dedAmountRightX, dataRowTop - 16, 9.5, regular, COLORS.slate);
+  const dataRowBottom = dataRowTop - dataRowH;
+  hLine(dataRowBottom, MARGIN, MARGIN + CONTENT_W);
+  vLine(colMidX, dataRowTop, dataRowBottom);
 
-  const totalRowBottom = earningsRowBottom - 24;
-  page.drawText("Total Earnings", { x: MARGIN + 8, y: earningsRowBottom - 15, size: 10, font: bold });
-  drawRightAligned(formatMoney(data.amount), colAmountRightX, earningsRowBottom - 15, 11, bold);
-  hLine(totalRowBottom);
-  vLine(MARGIN, earningsRowBottom, totalRowBottom);
-  vLine(MARGIN + CONTENT_W, earningsRowBottom, totalRowBottom);
+  const totalRowTop = dataRowBottom;
+  const totalRowH = 24;
+  page.drawText("Total Earnings", { x: MARGIN + 8, y: totalRowTop - 15, size: 9.5, font: bold });
+  drawRightAligned(formatMoney(data.amount), earnAmountRightX, totalRowTop - 15, 10, bold);
+  page.drawText("Total Deductions", { x: colMidX + 8, y: totalRowTop - 15, size: 9.5, font: bold });
+  drawRightAligned("0.00", dedAmountRightX, totalRowTop - 15, 10, bold);
+  const totalRowBottom = totalRowTop - totalRowH;
+  hLine(totalRowBottom, MARGIN, MARGIN + CONTENT_W);
+  vLine(colMidX, totalRowTop, totalRowBottom);
 
-  y = totalRowBottom - 16;
+  y = totalRowBottom;
 
-  // ── Net Pay box — figures + words ──────────────────────────────────────
-  const netBoxH = 44;
+  // ── Net Pay — figures + words ──────────────────────────────────────────
+  const netBoxH = 46;
   const netTop = y;
   const netBottom = netTop - netBoxH;
-  vLine(MARGIN, netTop, netBottom);
-  vLine(MARGIN + CONTENT_W, netTop, netBottom);
-  hLine(netTop);
-  hLine(netBottom);
-  page.drawText("Net Pay", { x: MARGIN + 8, y: netTop - 16, size: 10, font: bold });
-  drawRightAligned(formatMoney(data.amount), colAmountRightX, netTop - 18, 15, bold);
-  page.drawText(amountInWords(data.amount), { x: MARGIN + 8, y: netTop - 32, size: 8.5, font: regular, color: COLORS.slate });
+  page.drawText("Net Pay", { x: MARGIN + 8, y: netTop - 17, size: 10, font: bold });
+  drawRightAligned(formatMoney(data.amount), MARGIN + CONTENT_W - 8, netTop - 19, 16, bold);
+  page.drawText(amountInWords(data.amount), { x: MARGIN + 8, y: netTop - 34, size: 8.5, font: regular, color: COLORS.slate });
+  hLine(netBottom, MARGIN, MARGIN + CONTENT_W);
 
-  y = netBottom - 16;
+  y = netBottom;
 
-  // ── Bank details block — the account this salary is credited to; a
-  // loan officer cross-checks this against the applicant's bank statement. ──
+  // ── Bank details — the account this salary is credited to; a loan
+  // officer cross-checks this against the applicant's bank statement. ───
   const hasBankDetails = bd && (bd.accountHolderName || bd.bankName || bd.accountNumber || bd.ifscCode);
   const bankTop = y;
-  const bankBlockH = hasBankDetails ? 24 + 44 : 0;
+  let bankBottom = bankTop;
   if (hasBankDetails && bd) {
-    page.drawText("Salary Credited To", { x: MARGIN + 8, y: bankTop - 14, size: 8.5, font: bold });
-    let by = bankTop - 28;
+    page.drawText("Salary Credited To", { x: MARGIN + 8, y: bankTop - 15, size: 8.5, font: bold });
+    page.drawText("Payment Mode: Bank Transfer (NEFT)", { x: colMidX + 8, y: bankTop - 15, size: 8, font: regular, color: COLORS.slate });
+    let by = bankTop - 29;
     const bankLines = [
       bd.accountHolderName && `A/c Holder's Name: ${bd.accountHolderName}`,
       bd.bankName && `Bank Name: ${bd.bankName}`,
@@ -248,60 +278,97 @@ export async function generateSalarySlipPdf(data: SalarySlipData): Promise<Uint8
       page.drawText(line, { x: MARGIN + 8, y: by, size: 8, font: regular, color: COLORS.slate });
       by -= 11;
     }
-    vLine(MARGIN, bankTop, bankTop - bankBlockH);
-    vLine(MARGIN + CONTENT_W, bankTop, bankTop - bankBlockH);
-    hLine(bankTop);
-    hLine(bankTop - bankBlockH);
-    y = bankTop - bankBlockH - 16;
+    bankBottom = bankTop - Math.max(60, 24 + bankLines.length * 11 + 8);
+    hLine(bankBottom, MARGIN, MARGIN + CONTENT_W);
   }
 
-  // ── Signature block — a real signature + seal, not "no signature
-  // required": a self-issued payslip from one's own company needs more
-  // credibility, not less, for bank loan submission. Same layered
-  // seal-behind/signature-on-top convention and sizing as
-  // invoicePdfService.ts, reused exactly for visual consistency. ──────────
-  const SIGNATURE_IMG_H = 34;
-  const sigBlockRightX = MARGIN + CONTENT_W - 8;
-  const sigLabel = `for ${COMPANY_NAME}`;
-  drawRightAligned(sigLabel, sigBlockRightX, y, 8.5, bold);
-  const sigImgTopY = y - 4;
+  y = bankBottom - 20;
 
+  // ── Signature block — seal large and legible behind, signature sized
+  // by its own aspect ratio on top, "signed over the stamp" layering. ───
+  const sigBlockRightX = MARGIN + CONTENT_W - 16;
+  const sigLabel = `for ${COMPANY_NAME}`;
+  drawRightAligned(sigLabel, sigBlockRightX, y, 9, bold);
+
+  // Seal: real company seals render 2-3in (144-216pt) on a business
+  // document — the previous 34pt (0.47in) was illegibly small. Sized to
+  // 120pt here, capped against the content width so it can never run off
+  // the page edge even for a seal asset with an unusual aspect ratio.
+  const SEAL_H = 120;
+  const sealTopY = y - 10;
+  let sealW = 0;
   if (sealImg) {
     const naturalDims = sealImg.scale(1);
-    const scale = SIGNATURE_IMG_H / naturalDims.height;
-    const w = naturalDims.width * scale;
+    const scale = SEAL_H / naturalDims.height;
+    sealW = Math.min(naturalDims.width * scale, CONTENT_W * 0.35);
     page.drawImage(sealImg, {
-      x: sigBlockRightX - w - 40,
-      y: sigImgTopY - SIGNATURE_IMG_H,
-      width: w,
-      height: SIGNATURE_IMG_H,
-      opacity: 0.85,
+      x: sigBlockRightX - sealW,
+      y: sealTopY - SEAL_H,
+      width: sealW,
+      height: SEAL_H,
+      opacity: 0.55,
     });
   }
+
+  // Signature: sized by its own aspect ratio (not forced to the seal's
+  // height) — a signature is conventionally ~1-1.5in wide, not as tall as
+  // a seal — capped at 40pt tall so a very wide/short signature asset
+  // doesn't stretch distractingly thin. Drawn fully opaque, overlapping
+  // the lower-third of the seal (the conventional "signed over the
+  // stamp" look) instead of placed 40pt apart in empty space.
+  const SIG_MAX_H = 40;
+  const SIG_MAX_W = 110;
+  let sigImgBottomY = sealTopY - SEAL_H * 0.55;
   if (signatureImg) {
     const naturalDims = signatureImg.scale(1);
-    const scale = SIGNATURE_IMG_H / naturalDims.height;
-    const w = naturalDims.width * scale;
-    page.drawImage(signatureImg, {
-      x: sigBlockRightX - w,
-      y: sigImgTopY - SIGNATURE_IMG_H,
-      width: w,
-      height: SIGNATURE_IMG_H,
+    const heightFromWidth = SIG_MAX_W * (naturalDims.height / naturalDims.width);
+    const sigH = Math.min(SIG_MAX_H, heightFromWidth);
+    const sigW = sigH * (naturalDims.width / naturalDims.height);
+    const sigX = sigBlockRightX - sealW / 2 - sigW / 2;
+    const sigY = sealTopY - SEAL_H * 0.42 - sigH / 2;
+    page.drawImage(signatureImg, { x: sigX, y: sigY, width: sigW, height: sigH });
+    sigImgBottomY = sigY;
+  } else {
+    // Missing signature asset is visibly diagnosable, not a silent blank —
+    // a dashed underline plus a labelled placeholder instead of empty space.
+    const lineY = sealTopY - SEAL_H * 0.5;
+    page.drawLine({
+      start: { x: sigBlockRightX - 90, y: lineY },
+      end: { x: sigBlockRightX, y: lineY },
+      thickness: 0.75,
+      color: COLORS.slate,
+      dashArray: [2, 2],
     });
+    drawCentered("Signature on file", sigBlockRightX - 45, lineY - 10, 7, regular, COLORS.slate);
+    sigImgBottomY = lineY - 10;
   }
 
-  const sigBlockBottom = sigImgTopY - SIGNATURE_IMG_H - 16;
+  const sigBlockBottom = Math.min(sealTopY - SEAL_H, sigImgBottomY) - 14;
   drawRightAligned("Authorised Signatory", sigBlockRightX, sigBlockBottom, 8, regular, COLORS.slate);
 
-  // ── Footer ──────────────────────────────────────────────────────────────
+  y = sigBlockBottom - 16;
+  hLine(y, MARGIN, MARGIN + CONTENT_W);
+
+  // ── Footer bar — a drawn band, not floating text, so the page has a
+  // clear bottom edge instead of trailing off into blank space. ─────────
+  const footerH = 24;
+  const footerTop = y;
+  const footerBottom = Math.min(footerTop - footerH, MARGIN + 20);
+  page.drawRectangle({ x: MARGIN, y: footerBottom, width: CONTENT_W, height: footerTop - footerBottom, color: COLORS.footerBg });
   drawCentered(
     `This is a salary statement issued by ${COMPANY_NAME} for the period indicated above.`,
     PAGE_W / 2,
-    MARGIN + 10,
+    (footerTop + footerBottom) / 2 - 3,
     7.5,
     regular,
     COLORS.slate
   );
+  hLine(footerBottom, MARGIN, MARGIN + CONTENT_W);
+
+  // Outer left/right border spanning the whole unified frame, header rule
+  // to footer rule.
+  vLine(MARGIN, frameTop, footerBottom);
+  vLine(MARGIN + CONTENT_W, frameTop, footerBottom);
 
   return pdfDoc.save();
 }
