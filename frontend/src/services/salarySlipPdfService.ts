@@ -100,6 +100,9 @@ async function fetchBytes(url: string): Promise<ArrayBuffer | null> {
 
 export type SignatureKey = "baranitharan" | "ramachandraa";
 
+export const PAYMENT_MODES = ["Bank Transfer (NEFT)", "Bank Transfer (IMPS)", "Bank Transfer (RTGS)", "Cheque", "Cash"] as const;
+export type PaymentMode = (typeof PAYMENT_MODES)[number];
+
 export interface SalarySlipData {
   founderName: string;
   designation: string;
@@ -119,6 +122,9 @@ export interface SalarySlipData {
   // history to sum) can omit it and the YTD row is skipped entirely
   // rather than shown as a misleading 0.
   ytdGross?: number;
+  // Defaults to NEFT — editable per-slip since not every payment was
+  // necessarily made the same way.
+  paymentMode?: PaymentMode;
 }
 
 export async function generateSalarySlipPdf(data: SalarySlipData): Promise<Uint8Array> {
@@ -228,7 +234,7 @@ export async function generateSalarySlipPdf(data: SalarySlipData): Promise<Uint8
   const employeeRows: GridRow[] = [
     { leftLabel: "Employee Name", leftValue: data.founderName, rightLabel: "Designation", rightValue: data.designation },
     { leftLabel: "Employee ID", leftValue: data.employeeId, rightLabel: "Date of Joining", rightValue: formatShortDate(data.dateOfJoining) },
-    { leftLabel: "PAN", leftValue: employeePan, leftPlaceholder: employeePan === PLACEHOLDER_PAN, rightLabel: "UAN (PF)", rightValue: "N/A — company not EPFO-registered" },
+    { leftLabel: "PAN", leftValue: employeePan, leftPlaceholder: employeePan === PLACEHOLDER_PAN, rightLabel: "UAN (PF)", rightValue: "NIL" },
     { leftLabel: "Pay Period", leftValue: `${data.month} ${data.year}`, rightLabel: "Days Paid", rightValue: `${totalDays} / ${totalDays}` },
     { leftLabel: "Bank Account", leftValue: bankAccountNumber, leftPlaceholder: bankAccountNumber === PLACEHOLDER_BANK_ACCOUNT, rightLabel: "IFSC", rightValue: ifscCode, rightPlaceholder: ifscCode === PLACEHOLDER_IFSC },
   ];
@@ -252,7 +258,8 @@ export async function generateSalarySlipPdf(data: SalarySlipData): Promise<Uint8
 
   // Bank name line below the grid (doesn't fit the 4-column layout above) —
   // still inside the frame, small italic-weight note.
-  page.drawText(`Bank: ${bankName}  •  Mode of Payment: Bank Transfer (NEFT)`, {
+  const paymentMode = data.paymentMode || "Bank Transfer (NEFT)";
+  page.drawText(`Bank: ${bankName}  •  Mode of Payment: ${paymentMode}`, {
     x: MARGIN + 8,
     y: employeeBottom - 13,
     size: 7.5,
@@ -343,22 +350,23 @@ export async function generateSalarySlipPdf(data: SalarySlipData): Promise<Uint8
 
   y = netBottom;
 
-  // ── Signature block — seal large and legible behind, signature sized
-  // by its own aspect ratio on top, "signed over the stamp" layering. ───
+  // ── Signature block — seal legible behind, signature sized by its own
+  // aspect ratio on top, "signed over the stamp" layering. Sized down
+  // from an earlier 160pt seal per explicit feedback that it had become
+  // too large again, and the block is pulled snug against the footer
+  // instead of leaving a tall empty bordered gap below it. ──────────────
   const sigTop = y;
   const sigBlockRightX = MARGIN + CONTENT_W - 16;
   const sigLabel = `for ${COMPANY_NAME}`;
-  drawRightAligned(sigLabel, sigBlockRightX, sigTop - 20, 9, bold);
+  drawRightAligned(sigLabel, sigBlockRightX, sigTop - 16, 9, bold);
 
-  // Seal: sized larger again per explicit feedback that 120pt was still
-  // too small — 160pt (≈2.2in) here, still capped against content width.
-  const SEAL_H = 160;
-  const sealTopY = sigTop - 30;
+  const SEAL_H = 95;
+  const sealTopY = sigTop - 22;
   let sealW = 0;
   if (sealImg) {
     const naturalDims = sealImg.scale(1);
     const scale = SEAL_H / naturalDims.height;
-    sealW = Math.min(naturalDims.width * scale, CONTENT_W * 0.4);
+    sealW = Math.min(naturalDims.width * scale, CONTENT_W * 0.3);
     page.drawImage(sealImg, {
       x: sigBlockRightX - sealW,
       y: sealTopY - SEAL_H,
@@ -368,10 +376,10 @@ export async function generateSalarySlipPdf(data: SalarySlipData): Promise<Uint8
     });
   }
 
-  // Signature: also enlarged — up to 130pt wide / 50pt tall, from its own
-  // aspect ratio, drawn opaque over the lower-third of the seal.
-  const SIG_MAX_H = 50;
-  const SIG_MAX_W = 130;
+  // Signature: sized from its own aspect ratio, drawn opaque over the
+  // lower-third of the seal.
+  const SIG_MAX_H = 32;
+  const SIG_MAX_W = 85;
   let sigImgBottomY = sealTopY - SEAL_H * 0.55;
   if (signatureImg) {
     const naturalDims = signatureImg.scale(1);
@@ -395,24 +403,15 @@ export async function generateSalarySlipPdf(data: SalarySlipData): Promise<Uint8
     sigImgBottomY = lineY - 10;
   }
 
-  const sigBlockBottom = Math.min(sealTopY - SEAL_H, sigImgBottomY) - 14;
+  const sigBlockBottom = Math.min(sealTopY - SEAL_H, sigImgBottomY) - 12;
   drawRightAligned("Authorised Signatory", sigBlockRightX, sigBlockBottom, 8, regular, COLORS.slate);
 
-  y = sigBlockBottom - 10;
-  hLine(y, MARGIN, MARGIN + CONTENT_W);
-
-  // ── Footer bar — a drawn band anchored to a FIXED position at the
-  // bottom of the page, not computed relative to wherever the content
-  // above happened to end. The previous version set footerBottom =
-  // min(contentY - 24, MARGIN + 20), which always evaluated to MARGIN+20
-  // (since contentY sits well above that), making the gray rectangle
-  // stretch from right under the signature block all the way down —
-  // a large solid gray block instead of a thin strip. Fixed height,
-  // fixed position; whatever space is left above it between the
-  // signature block and here is plain white, not gray. ──────────────────
+  // ── Footer bar — a thin band immediately below the signature block,
+  // not a fixed page-bottom position that leaves a large empty bordered
+  // gap when the content above ends early. ──────────────────────────────
   const footerH = 24;
-  const footerBottom = MARGIN + 20;
-  const footerTop = footerBottom + footerH;
+  const footerTop = sigBlockBottom - 10;
+  const footerBottom = Math.max(footerTop - footerH, MARGIN + 20);
   page.drawRectangle({ x: MARGIN, y: footerBottom, width: CONTENT_W, height: footerH, color: COLORS.footerBg });
   drawCentered(
     `This is a salary statement issued by ${COMPANY_NAME} for the period indicated above. Confidential — not for circulation.`,

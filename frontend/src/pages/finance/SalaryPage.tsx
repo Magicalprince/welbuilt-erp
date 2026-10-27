@@ -31,7 +31,7 @@ import {
   useUpdateCompanySettings,
 } from "@/hooks/useFirestore";
 import { useAuthStore } from "@/store/authStore";
-import { generateAndDownloadSalarySlip, type SignatureKey } from "@/services/salarySlipPdfService";
+import { generateAndDownloadSalarySlip, PAYMENT_MODES, type SignatureKey, type PaymentMode } from "@/services/salarySlipPdfService";
 import type { FounderPayrollInfo } from "@/services/settingsService";
 import { uploadFileToR2 } from "@/services/r2Service";
 import toast from "react-hot-toast";
@@ -88,6 +88,7 @@ export default function SalaryPage() {
 
   const [slipRecord, setSlipRecord] = useState<SalaryRecord | null>(null);
   const [slipSignature, setSlipSignature] = useState<SignatureKey>("baranitharan");
+  const [slipPaymentMode, setSlipPaymentMode] = useState<PaymentMode>(PAYMENT_MODES[0]);
   const [isGeneratingSlip, setIsGeneratingSlip] = useState(false);
 
   // Mock slip — a one-off, editable, custom salary slip for internal use.
@@ -101,6 +102,7 @@ export default function SalaryPage() {
   const [mockEmployeeId, setMockEmployeeId] = useState("");
   const [mockDoj, setMockDoj] = useState("");
   const [mockSignature, setMockSignature] = useState<SignatureKey>("baranitharan");
+  const [mockPaymentMode, setMockPaymentMode] = useState<PaymentMode>(PAYMENT_MODES[0]);
   const [isGeneratingMock, setIsGeneratingMock] = useState(false);
 
   const [isUploadingSignature, setIsUploadingSignature] = useState(false);
@@ -238,6 +240,7 @@ export default function SalaryPage() {
   const handleOpenSlip = (record: SalaryRecord) => {
     setSlipRecord(record);
     setSlipSignature("baranitharan");
+    setSlipPaymentMode(PAYMENT_MODES[0]);
   };
 
   const handleGenerateSlip = async () => {
@@ -261,6 +264,7 @@ export default function SalaryPage() {
         signatureKey: slipSignature,
         founderEmail: staticInfo.email,
         ytdGross: computeYtdGross(slipRecord.founderId, slipRecord.month),
+        paymentMode: slipPaymentMode,
       });
       toast.success("Salary slip downloaded");
       setSlipRecord(null);
@@ -303,6 +307,7 @@ export default function SalaryPage() {
         // No ytdGross — a mock slip has no real salary history to sum,
         // so the YTD row is omitted entirely rather than showing a
         // misleading figure.
+        paymentMode: mockPaymentMode,
       });
       toast.success("Mock salary slip downloaded");
     } catch (error) {
@@ -631,6 +636,16 @@ export default function SalaryPage() {
               />
             </div>
           </div>
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-2">
+              <Label>Mode of Payment</Label>
+              <Select
+                value={mockPaymentMode}
+                onChange={(e) => setMockPaymentMode(e.target.value as PaymentMode)}
+                options={PAYMENT_MODES.map((mode) => ({ value: mode, label: mode }))}
+              />
+            </div>
+          </div>
           <div className="flex justify-end">
             <Button onClick={handleGenerateMockSlip} disabled={isGeneratingMock}>
               <Download className="h-4 w-4 mr-2" />
@@ -719,16 +734,26 @@ export default function SalaryPage() {
             <p className="text-sm text-muted-foreground">
               {formatCurrency(slipRecord.amount)} for {monthKeyLabel(slipRecord.month)}
             </p>
-            <div className="space-y-2">
-              <Label>Signature</Label>
-              <Select
-                value={slipSignature}
-                onChange={(e) => setSlipSignature(e.target.value as SignatureKey)}
-                options={[
-                  { value: "baranitharan", label: "Baranitharan S" },
-                  { value: "ramachandraa", label: "Ramachandraa PS" },
-                ]}
-              />
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label>Signature</Label>
+                <Select
+                  value={slipSignature}
+                  onChange={(e) => setSlipSignature(e.target.value as SignatureKey)}
+                  options={[
+                    { value: "baranitharan", label: "Baranitharan S" },
+                    { value: "ramachandraa", label: "Ramachandraa PS" },
+                  ]}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Mode of Payment</Label>
+                <Select
+                  value={slipPaymentMode}
+                  onChange={(e) => setSlipPaymentMode(e.target.value as PaymentMode)}
+                  options={PAYMENT_MODES.map((mode) => ({ value: mode, label: mode }))}
+                />
+              </div>
             </div>
             <div className="flex gap-3 justify-end pt-4 border-t">
               <Button variant="outline" onClick={() => setSlipRecord(null)}>
