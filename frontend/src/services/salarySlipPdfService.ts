@@ -98,6 +98,63 @@ async function fetchBytes(url: string): Promise<ArrayBuffer | null> {
   }
 }
 
+// The seal and signature source PNGs carry a lot of blank white/transparent
+// margin around the actual artwork (the seal especially — a tall portrait
+// image with the circular stamp occupying only its middle band). Scaling
+// those images up by height makes the margin grow right along with the
+// artwork, so the visible stamp/signature never gets proportionally
+// bigger. This crops each image down to the tight bounding box of its
+// non-blank pixels before it's embedded, so every point of the height
+// budget given to it in the PDF is actual ink. Browser-only (Canvas), but
+// this whole service already only runs client-side.
+async function cropToContent(bytes: ArrayBuffer): Promise<ArrayBuffer> {
+  const blob = new Blob([bytes], { type: "image/png" });
+  const bitmap = await createImageBitmap(blob);
+  const canvas = document.createElement("canvas");
+  canvas.width = bitmap.width;
+  canvas.height = bitmap.height;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return bytes;
+  ctx.drawImage(bitmap, 0, 0);
+  const { data, width, height } = ctx.getImageData(0, 0, bitmap.width, bitmap.height);
+
+  let minX = width, minY = height, maxX = -1, maxY = -1;
+  for (let py = 0; py < height; py++) {
+    for (let px = 0; px < width; px++) {
+      const i = (py * width + px) * 4;
+      const alpha = data[i + 3];
+      const r = data[i], g = data[i + 1], b = data[i + 2];
+      const isBlank = alpha < 10 || (r > 248 && g > 248 && b > 248);
+      if (!isBlank) {
+        if (px < minX) minX = px;
+        if (px > maxX) maxX = px;
+        if (py < minY) minY = py;
+        if (py > maxY) maxY = py;
+      }
+    }
+  }
+  if (maxX < minX || maxY < minY) return bytes; // nothing found — fall back to original
+
+  const pad = 4;
+  minX = Math.max(0, minX - pad);
+  minY = Math.max(0, minY - pad);
+  maxX = Math.min(width - 1, maxX + pad);
+  maxY = Math.min(height - 1, maxY + pad);
+  const cropW = maxX - minX + 1;
+  const cropH = maxY - minY + 1;
+
+  const cropCanvas = document.createElement("canvas");
+  cropCanvas.width = cropW;
+  cropCanvas.height = cropH;
+  const cropCtx = cropCanvas.getContext("2d");
+  if (!cropCtx) return bytes;
+  cropCtx.drawImage(canvas, minX, minY, cropW, cropH, 0, 0, cropW, cropH);
+
+  const croppedBlob: Blob | null = await new Promise((resolve) => cropCanvas.toBlob(resolve, "image/png"));
+  if (!croppedBlob) return bytes;
+  return croppedBlob.arrayBuffer();
+}
+
 export type SignatureKey = "baranitharan" | "ramachandraa";
 
 export const PAYMENT_MODES = ["Bank Transfer (NEFT)", "Bank Transfer (IMPS)", "Bank Transfer (RTGS)", "Cheque", "Cash"] as const;
@@ -158,10 +215,14 @@ export async function generateSalarySlipPdf(data: SalarySlipData): Promise<Uint8
   const signaturePath =
     data.signatureKey === "ramachandraa" ? companySettings.ramachandraaSignatureUrl : BARANITHARAN_SIGNATURE_PATH;
 
-  const [logoBytes, sealBytes, signatureBytes] = await Promise.all([
+  const [logoBytes, sealBytesRaw, signatureBytesRaw] = await Promise.all([
     fetchBytes(LOGO_PATH),
     fetchBytes(SEAL_PATH),
     signaturePath ? fetchBytes(signaturePath) : Promise.resolve(null),
+  ]);
+  const [sealBytes, signatureBytes] = await Promise.all([
+    sealBytesRaw ? cropToContent(sealBytesRaw).catch(() => sealBytesRaw) : Promise.resolve(null),
+    signatureBytesRaw ? cropToContent(signatureBytesRaw).catch(() => signatureBytesRaw) : Promise.resolve(null),
   ]);
   const logoImg = logoBytes ? await pdfDoc.embedPng(logoBytes).catch(() => null) : null;
   const sealImg = sealBytes ? await pdfDoc.embedPng(sealBytes).catch(() => null) : null;
@@ -351,22 +412,24 @@ export async function generateSalarySlipPdf(data: SalarySlipData): Promise<Uint8
   y = netBottom;
 
   // ── Signature block — seal legible behind, signature sized by its own
-  // aspect ratio on top, "signed over the stamp" layering. Sized down
-  // from an earlier 160pt seal per explicit feedback that it had become
-  // too large again, and the block is pulled snug against the footer
-  // instead of leaving a tall empty bordered gap below it. ──────────────
+  // aspect ratio on top, "signed over the stamp" layering. Both source
+  // images are cropped to their actual content (see cropToContent) before
+  // reaching here, so this height budget is spent entirely on visible
+  // artwork rather than the blank margin the raw PNGs carry — the footer
+  // is derived from sigBlockBottom below, so growing these never
+  // reintroduces an empty gap underneath. ───────────────────────────────
   const sigTop = y;
   const sigBlockRightX = MARGIN + CONTENT_W - 16;
   const sigLabel = `for ${COMPANY_NAME}`;
   drawRightAligned(sigLabel, sigBlockRightX, sigTop - 16, 9, bold);
 
-  const SEAL_H = 95;
+  const SEAL_H = 130;
   const sealTopY = sigTop - 22;
   let sealW = 0;
   if (sealImg) {
     const naturalDims = sealImg.scale(1);
     const scale = SEAL_H / naturalDims.height;
-    sealW = Math.min(naturalDims.width * scale, CONTENT_W * 0.3);
+    sealW = Math.min(naturalDims.width * scale, CONTENT_W * 0.35);
     page.drawImage(sealImg, {
       x: sigBlockRightX - sealW,
       y: sealTopY - SEAL_H,
@@ -378,8 +441,8 @@ export async function generateSalarySlipPdf(data: SalarySlipData): Promise<Uint8
 
   // Signature: sized from its own aspect ratio, drawn opaque over the
   // lower-third of the seal.
-  const SIG_MAX_H = 32;
-  const SIG_MAX_W = 85;
+  const SIG_MAX_H = 48;
+  const SIG_MAX_W = 125;
   let sigImgBottomY = sealTopY - SEAL_H * 0.55;
   if (signatureImg) {
     const naturalDims = signatureImg.scale(1);
