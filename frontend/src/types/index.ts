@@ -291,6 +291,28 @@ export interface Repayment {
   createdAt: Date;
 }
 
+// Salary Types — deliberately NOT routed through the Expenses collection
+// (unlike Withdrawal, which links a FOUNDER_WITHDRAWAL-category Expense).
+// A SalaryRecord is its own category: it still reduces revenue/bank
+// balance via financeCalculations.ts, but is reported separately from
+// Expenses everywhere (Finance Overview, Reports, statement PDF).
+export interface SalaryRecord {
+  id: string;
+  founderId: string;
+  founder?: User;
+  month: string; // "2026-08" format
+  amount: number; // snapshot at the time this was marked — editable after creation
+  takenAt: Date; // the date+time the user specifies when the salary was actually paid
+  notes?: string;
+  createdAt: Date;
+}
+
+export interface MonthlySalaryConfig {
+  amount: number; // the single equal amount applied to all founders by default
+  updatedAt: Date;
+  updatedBy?: string;
+}
+
 // Note Types
 export interface NoteCheckpoint {
   id: string;
@@ -357,7 +379,8 @@ export type ActivityEntityType =
   | "WITHDRAWAL"
   | "USER"
   | "INTERN"
-  | "LEAD";
+  | "LEAD"
+  | "SALARY";
 
 export interface ActivityLog {
   id: string;

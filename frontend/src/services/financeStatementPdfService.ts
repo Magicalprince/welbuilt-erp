@@ -1,7 +1,7 @@
 import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
 import fontkit from "@pdf-lib/fontkit";
 import { saveAs } from "file-saver";
-import type { Income, Expense } from "@/types";
+import type { Income, Expense, SalaryRecord } from "@/types";
 import { getCompanySettings } from "./settingsService";
 
 // Filing-ready Income & Expense statement — same classic bordered,
@@ -103,6 +103,10 @@ export interface StatementOptions {
   title: string; // "Income & Expense Statement" | "Income Statement" | "Expense Statement"
   dateRangeLabel?: string; // e.g. "01 Oct 2026 – 22 Oct 2026", omitted = "All time"
   income?: StatementRow[];
+  // Salary is drawn as its own ruled section between Income and Expenses —
+  // never merged into the expenses array — so the statement mirrors the
+  // same Income/Salary/Expenses separation used on Finance Overview/Reports.
+  salary?: StatementRow[];
   expenses?: StatementRow[];
 }
 
@@ -387,35 +391,59 @@ export async function generateFinanceStatementPdf(options: StatementOptions): Pr
     return sectionTotal;
   };
 
-  // The Net summary's 70pt is only relevant to whichever section draws
-  // last — reserve it there so that section's own pagination keeps the
-  // summary glued to its total instead of a page break landing between them.
-  const hasNetSummary = !!(options.income && options.expenses);
+  // The Net summary box needs one line per section present (Income/Salary/
+  // Expenses) plus the Net line itself — reserved ahead of time by
+  // whichever section draws LAST, so that section's own pagination keeps
+  // the summary glued to its total instead of a page break landing
+  // between them. At least two of the three sections must be present for
+  // a Net figure to mean anything (matches the prior Income-and-Expenses
+  // gate, generalized to the optional Salary section).
+  const summaryLineCount = (options.income ? 1 : 0) + (options.salary ? 1 : 0) + (options.expenses ? 1 : 0);
+  const hasNetSummary = summaryLineCount >= 2;
+  const dynamicNetSummaryH = netSummaryH - 16 + summaryLineCount * 16; // base height was sized for 2 lines + Net
+
+  // Sections draw in a fixed Income → Salary → Expenses order; whichever
+  // of the present ones is drawn last is the one that needs to reserve
+  // room for the summary box right after it.
+  const lastPresentSection = options.expenses ? "expenses" : options.salary ? "salary" : "income";
+
   const incomeTotal = options.income
-    ? drawSection("Income", options.income, !options.expenses && hasNetSummary ? netSummaryH : 0)
+    ? drawSection("Income", options.income, hasNetSummary && lastPresentSection === "income" ? dynamicNetSummaryH : 0)
+    : 0;
+  const salaryTotal = options.salary
+    ? drawSection("Salary", options.salary, hasNetSummary && lastPresentSection === "salary" ? dynamicNetSummaryH : 0)
     : 0;
   const expenseTotal = options.expenses
-    ? drawSection("Expenses", options.expenses, hasNetSummary ? netSummaryH : 0)
+    ? drawSection("Expenses", options.expenses, hasNetSummary && lastPresentSection === "expenses" ? dynamicNetSummaryH : 0)
     : 0;
 
   // ── Net summary ─────────────────────────────────────────────────────
-  if (options.income && options.expenses) {
-    const net = incomeTotal - expenseTotal;
+  if (hasNetSummary) {
+    const net = incomeTotal - salaryTotal - expenseTotal;
     const summaryTop = y;
-    const summaryH = 70;
-    const summaryBottom = summaryTop - summaryH;
+    const summaryBottom = summaryTop - dynamicNetSummaryH;
     vLine(MARGIN, summaryTop, summaryBottom);
     vLine(MARGIN + CONTENT_W, summaryTop, summaryBottom);
     hLine(summaryTop);
     hLine(summaryBottom);
 
     let sy = summaryTop - 18;
-    page.drawText("Total Income", { x: MARGIN + 10, y: sy, size: 9.5, font: regular });
-    drawRightAligned(formatMoney(incomeTotal), colAmountRightX, sy, 9.5, regular);
-    sy -= 16;
-    page.drawText("Total Expenses", { x: MARGIN + 10, y: sy, size: 9.5, font: regular });
-    drawRightAligned(formatMoney(expenseTotal), colAmountRightX, sy, 9.5, regular);
-    sy -= 18;
+    if (options.income) {
+      page.drawText("Total Income", { x: MARGIN + 10, y: sy, size: 9.5, font: regular });
+      drawRightAligned(formatMoney(incomeTotal), colAmountRightX, sy, 9.5, regular);
+      sy -= 16;
+    }
+    if (options.salary) {
+      page.drawText("Total Salary", { x: MARGIN + 10, y: sy, size: 9.5, font: regular });
+      drawRightAligned(formatMoney(salaryTotal), colAmountRightX, sy, 9.5, regular);
+      sy -= 16;
+    }
+    if (options.expenses) {
+      page.drawText("Total Expenses", { x: MARGIN + 10, y: sy, size: 9.5, font: regular });
+      drawRightAligned(formatMoney(expenseTotal), colAmountRightX, sy, 9.5, regular);
+      sy -= 16;
+    }
+    sy -= 2;
     hLine(sy + 8, MARGIN + 10, MARGIN + CONTENT_W - 10);
     page.drawText("Net", { x: MARGIN + 10, y: sy - 6, size: 11, font: bold });
     drawRightAligned(formatMoney(net), colAmountRightX, sy - 6, 12, bold, net >= 0 ? COLORS.positive : COLORS.negative);
@@ -451,6 +479,20 @@ export function incomeToStatementRows(incomes: Income[], categoryLabel: (c: Inco
 
 export function expensesToStatementRows(expenses: Expense[], categoryLabel: (c: Expense["category"]) => string): StatementRow[] {
   return toStatementRows(expenses, (e) => categoryLabel(e.category));
+}
+
+// Salary rows use the founder's name as both the description and the
+// "category" column (there's no category concept for salary — every row
+// is simply that founder's salary for the month it was taken).
+export function salaryToStatementRows(records: SalaryRecord[], founderName: (founderId: string) => string): StatementRow[] {
+  return [...records]
+    .sort((a, b) => a.takenAt.getTime() - b.takenAt.getTime())
+    .map((record) => ({
+      date: record.takenAt,
+      description: `Salary — ${founderName(record.founderId)}`,
+      amount: record.amount,
+      categoryLabel: founderName(record.founderId),
+    }));
 }
 
 export async function generateFinanceStatementPdfBlob(options: StatementOptions): Promise<Blob> {

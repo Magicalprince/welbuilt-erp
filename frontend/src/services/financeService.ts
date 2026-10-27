@@ -9,6 +9,7 @@ import {
   where,
 } from "./firestore";
 import type { Expense, ExpenseCategory } from "@/types";
+import { calculateNetProfit, calculateBankBalance } from "./financeCalculations";
 
 export interface FirestoreExpense {
   id: string;
@@ -144,12 +145,22 @@ export async function getTotalFounderWithdrawals(): Promise<number> {
   return totalFromWithdrawals - totalRepayments;
 }
 
-// Get net profit (Revenue - Operational Expenses, NOT including withdrawals)
-// This represents what the company has earned
+// Get total salary taken by all founders — a separate category from
+// Expenses (see salaryService.ts), but still deducted from Net Profit.
+export async function getTotalSalaryPaid(): Promise<number> {
+  const { getTotalSalaryTaken } = await import("./salaryService");
+  return getTotalSalaryTaken();
+}
+
+// Get net profit (Revenue - Operational Expenses - Salary, NOT including
+// withdrawals). This represents what the company has earned.
 export async function getNetProfit(): Promise<number> {
-  const revenue = await getTotalRevenue();
-  const operationalExpenses = await getOperationalExpenses();
-  return revenue - operationalExpenses;
+  const [revenue, operationalExpenses, totalSalary] = await Promise.all([
+    getTotalRevenue(),
+    getOperationalExpenses(),
+    getTotalSalaryPaid(),
+  ]);
+  return calculateNetProfit({ totalRevenue: revenue, operationalExpenses, totalSalary });
 }
 
 // Get company bank balance (Net Profit - Withdrawals)
@@ -157,14 +168,15 @@ export async function getNetProfit(): Promise<number> {
 export async function getCompanyBankBalance(): Promise<number> {
   const netProfit = await getNetProfit();
   const totalWithdrawals = await getTotalFounderWithdrawals();
-  return netProfit - totalWithdrawals;
+  return calculateBankBalance(netProfit, totalWithdrawals);
 }
 
 // Get financial summary
 export async function getFinancialSummary(): Promise<{
   totalRevenue: number;
-  totalExpenses: number; // Operational expenses only (excluding withdrawals)
-  netProfit: number; // Revenue - Operational Expenses
+  totalExpenses: number; // Operational expenses only (excluding withdrawals and salary)
+  totalSalary: number; // Total founder salary taken — reported separately from Expenses
+  netProfit: number; // Revenue - Operational Expenses - Salary
   bankBalance: number; // Net Profit - Withdrawals
   totalWithdrawals: number; // Total founder withdrawals
   pendingPayments: number;
@@ -175,26 +187,26 @@ export async function getFinancialSummary(): Promise<{
   const [
     totalRevenue,
     operationalExpenses,
+    totalSalary,
     totalWithdrawals,
     pendingPayments,
     thisMonthRevenue,
   ] = await Promise.all([
     getTotalRevenue(),
     getOperationalExpenses(),
+    getTotalSalaryPaid(),
     getTotalFounderWithdrawals(),
     getPendingPaymentsTotal(),
     getThisMonthRevenue(),
   ]);
 
-  // Net profit = Revenue - Operational Expenses (what the company earned)
-  const netProfit = totalRevenue - operationalExpenses;
-
-  // Bank balance = Net Profit - Withdrawals (what's left in the bank)
-  const bankBalance = netProfit - totalWithdrawals;
+  const netProfit = calculateNetProfit({ totalRevenue, operationalExpenses, totalSalary });
+  const bankBalance = calculateBankBalance(netProfit, totalWithdrawals);
 
   return {
     totalRevenue,
     totalExpenses: operationalExpenses,
+    totalSalary,
     netProfit,
     bankBalance,
     totalWithdrawals,

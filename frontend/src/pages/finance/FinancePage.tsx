@@ -18,6 +18,7 @@ import {
   FileSpreadsheet,
   FileText,
   Repeat,
+  Users,
 } from "lucide-react";
 import {
   Card,
@@ -39,7 +40,7 @@ import {
   DateRangeFilter,
 } from "@/components/ui";
 import { formatCurrency, formatDate, isWithinDateRange, EMPTY_DATE_RANGE, type DateRange } from "@/lib/utils";
-import { useFinancialSummary, useFounderFinances, useInvoices, useClients, useExpenses, useIncomes } from "@/hooks/useFirestore";
+import { useFinancialSummary, useFounderFinances, useInvoices, useClients, useExpenses, useIncomes, useSalaryRecords, useFounders } from "@/hooks/useFirestore";
 import { useFinancialHistory } from "@/hooks/useFinancialHistory";
 import ExpandedChartOverlay from "@/components/finance/ExpandedChartOverlay";
 import type { InvoiceStatus, IncomeCategory, ExpenseCategory } from "@/types";
@@ -47,6 +48,7 @@ import {
   generateAndDownloadFinanceStatementPdf,
   incomeToStatementRows,
   expensesToStatementRows,
+  salaryToStatementRows,
 } from "@/services/financeStatementPdfService";
 import toast from "react-hot-toast";
 
@@ -92,6 +94,8 @@ export default function FinancePage() {
   const { data: clients } = useClients();
   const { data: expenses } = useExpenses();
   const { data: incomes } = useIncomes();
+  const { data: salaryRecords } = useSalaryRecords();
+  const { data: founders } = useFounders();
   const { recentHistory, fullHistory } = useFinancialHistory();
   const [isChartExpanded, setIsChartExpanded] = useState(false);
   const [statementRange, setStatementRange] = useState<DateRange>(EMPTY_DATE_RANGE);
@@ -106,18 +110,22 @@ export default function FinancePage() {
       const filteredExpenses = (expenses || []).filter((e) =>
         isWithinDateRange(e.date, statementRange.from, statementRange.to)
       );
+      const filteredSalary = (salaryRecords || []).filter((s) =>
+        isWithinDateRange(s.takenAt, statementRange.from, statementRange.to)
+      );
       const dateRangeLabel =
         statementRange.from || statementRange.to
           ? `${statementRange.from ? formatDate(statementRange.from) : "Start"} – ${statementRange.to ? formatDate(statementRange.to) : "Now"}`
           : undefined;
       await generateAndDownloadFinanceStatementPdf(
         {
-          title: "Income & Expense Statement",
+          title: "Income, Salary & Expense Statement",
           dateRangeLabel,
           income: incomeToStatementRows(filteredIncomes, (cat) => incomeCategoryLabels[cat] || cat),
+          salary: salaryToStatementRows(filteredSalary, (founderId) => founders?.find((f) => f.id === founderId)?.name || "Founder"),
           expenses: expensesToStatementRows(filteredExpenses, (cat) => expenseCategoryLabels[cat] || cat),
         },
-        `Income_Expense_Statement_${new Date().toISOString().split("T")[0]}.pdf`
+        `Income_Salary_Expense_Statement_${new Date().toISOString().split("T")[0]}.pdf`
       );
     } catch (error) {
       console.error("Error exporting combined statement:", error);
@@ -298,8 +306,34 @@ export default function FinancePage() {
                 </div>
               </div>
               <p className="text-xs text-muted-foreground mt-3">
-                After all expenses
+                After all expenses and salary
               </p>
+            </CardContent>
+          </Card>
+        </motion.div>
+
+        {/* Total Salary Paid */}
+        <motion.div variants={itemVariants}>
+          <Card className="glass-card border-border/50 h-full">
+            <CardContent className="p-6">
+              <div className="flex items-start justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground flex items-center gap-2">
+                    <Users className="h-4 w-4" />
+                    Total Salary Paid
+                  </p>
+                  <AnimatedCurrency
+                    value={financials?.totalSalary ?? 0}
+                    className="text-2xl font-bold mt-2 text-indigo-500"
+                  />
+                </div>
+                <div className="h-10 w-10 rounded-xl bg-indigo-500/10 flex items-center justify-center">
+                  <Users className="h-5 w-5 text-indigo-500" />
+                </div>
+              </div>
+              <Link to="/finance/salary" className="text-xs text-primary hover:underline mt-3 inline-block">
+                View salary records
+              </Link>
             </CardContent>
           </Card>
         </motion.div>
@@ -474,6 +508,9 @@ export default function FinancePage() {
             <Link to="/finance/withdrawals">
               <QuickActionCard icon={Wallet} label="Withdrawals" color="purple" />
             </Link>
+            <Link to="/finance/salary">
+              <QuickActionCard icon={Users} label="Salary" color="indigo" />
+            </Link>
             <Link to="/finance/proformas">
               <QuickActionCard icon={FileText} label="Proformas" color="blue" />
             </Link>
@@ -539,7 +576,7 @@ export default function FinancePage() {
 }
 
 // Founder Card Component
-function FounderCard({ founder, index }: { founder: { id: string; name: string; equityPercent: number; earnedShare: number; totalWithdrawals: number; availableBalance: number }; index: number }) {
+function FounderCard({ founder, index }: { founder: { id: string; name: string; equityPercent: number; earnedShare: number; totalWithdrawals: number; totalSalary: number; availableBalance: number }; index: number }) {
   const colors = [
     { bg: "bg-amber-500", ring: "ring-amber-500/20", text: "text-amber-500" },
     { bg: "bg-slate-500", ring: "ring-slate-500/20", text: "text-slate-500" },
@@ -573,6 +610,12 @@ function FounderCard({ founder, index }: { founder: { id: string; name: string; 
               <span className="text-muted-foreground">Withdrawn</span>
               <span className="font-medium text-red-500">-{formatCurrency(founder.totalWithdrawals)}</span>
             </div>
+            {founder.totalSalary > 0 && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Salary Taken</span>
+                <span className="font-medium text-indigo-500">-{formatCurrency(founder.totalSalary)}</span>
+              </div>
+            )}
             <div className="h-px bg-border" />
             <div className="flex justify-between items-center">
               <span className="font-medium">Available</span>
@@ -580,7 +623,7 @@ function FounderCard({ founder, index }: { founder: { id: string; name: string; 
             </div>
           </div>
           <Progress
-            value={founder.earnedShare > 0 ? (founder.totalWithdrawals / founder.earnedShare) * 100 : 0}
+            value={founder.earnedShare > 0 ? ((founder.totalWithdrawals + founder.totalSalary) / founder.earnedShare) * 100 : 0}
             className="mt-3 h-1.5"
             indicatorClassName={color.bg}
           />
@@ -599,6 +642,7 @@ function QuickActionCard({ icon: Icon, label, color }: { icon: React.ElementType
     purple: { bg: "bg-purple-500/10", text: "text-purple-500" },
     blue: { bg: "bg-blue-500/10", text: "text-blue-500" },
     teal: { bg: "bg-teal-500/10", text: "text-teal-500" },
+    indigo: { bg: "bg-indigo-500/10", text: "text-indigo-500" },
   };
   const colors = colorMap[color] || colorMap.gold;
 

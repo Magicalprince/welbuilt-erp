@@ -20,7 +20,7 @@ import {
   Pagination,
 } from "@/components/ui";
 import { usePagination } from "@/hooks/usePagination";
-import { useExpenses, useIncomes, useInvoices, useClients, useProjects } from "@/hooks/useFirestore";
+import { useExpenses, useIncomes, useInvoices, useClients, useProjects, useSalaryRecords, useFounders } from "@/hooks/useFirestore";
 import { useQuery } from "@tanstack/react-query";
 import { getInterns } from "@/services/internService";
 import { formatCurrency, formatDate, cn } from "@/lib/utils";
@@ -45,12 +45,16 @@ export default function ReportsPage() {
 
   const { data: expenses } = useExpenses();
   const { data: incomes } = useIncomes();
+  const { data: salaryRecords } = useSalaryRecords();
+  const { data: founders } = useFounders();
   const { data: invoices } = useInvoices();
   const { data: clients } = useClients();
   const { data: projects } = useProjects();
   const { data: interns } = useQuery({ queryKey: ["interns"], queryFn: getInterns });
 
-  // ── P&L Data ──────────────────────────────────────────────
+  // ── P&L Data — Income / Salary / Expenses kept as three separate terms,
+  // Salary never folded into the Expenses figure (per explicit instruction
+  // that Salary is its own category even though it still reduces profit). ──
   const pnlMonthly = useMemo(() => {
     const year = parseInt(selectedYear);
     return MONTHS.map((month, idx) => {
@@ -68,14 +72,26 @@ export default function ReportsPage() {
         })
         .reduce((s, e) => s + e.amount, 0);
 
-      return { month, income: monthIncome, expense: monthExpense, profit: monthIncome - monthExpense };
+      const monthSalary = (salaryRecords || [])
+        .filter((s) => {
+          const d = new Date(s.takenAt);
+          return d.getFullYear() === year && d.getMonth() === idx;
+        })
+        .reduce((s, r) => s + r.amount, 0);
+
+      return { month, income: monthIncome, expense: monthExpense, salary: monthSalary, profit: monthIncome - monthExpense - monthSalary };
     });
-  }, [incomes, expenses, selectedYear]);
+  }, [incomes, expenses, salaryRecords, selectedYear]);
 
   const pnlTotals = useMemo(() => {
     const totals = pnlMonthly.reduce(
-      (acc, m) => ({ income: acc.income + m.income, expense: acc.expense + m.expense, profit: acc.profit + m.profit }),
-      { income: 0, expense: 0, profit: 0 }
+      (acc, m) => ({
+        income: acc.income + m.income,
+        expense: acc.expense + m.expense,
+        salary: acc.salary + m.salary,
+        profit: acc.profit + m.profit,
+      }),
+      { income: 0, expense: 0, salary: 0, profit: 0 }
     );
     return totals;
   }, [pnlMonthly]);
@@ -158,8 +174,12 @@ export default function ReportsPage() {
       const d = new Date(e.date);
       return d.getFullYear() === year && d.getMonth() === monthIdx && e.category !== "FOUNDER_WITHDRAWAL";
     });
-    return { income: monthIncome, expenses: monthExpenses };
-  }, [incomes, expenses, selectedYear, selectedMonth]);
+    const monthSalary = (salaryRecords || []).filter((s) => {
+      const d = new Date(s.takenAt);
+      return d.getFullYear() === year && d.getMonth() === monthIdx;
+    });
+    return { income: monthIncome, expenses: monthExpenses, salary: monthSalary };
+  }, [incomes, expenses, salaryRecords, selectedYear, monthIdx]);
 
   const tabs: { id: ReportTab; label: string; icon: React.ReactNode }[] = [
     { id: "pnl", label: "P&L Report", icon: <TrendingUp className="h-4 w-4" /> },
@@ -181,9 +201,9 @@ export default function ReportsPage() {
 
   const exportPnL = () => {
     const rows = [
-      ["Month", "Income (₹)", "Expenses (₹)", "Net Profit (₹)"],
-      ...pnlMonthly.map((m) => [m.month, m.income.toString(), m.expense.toString(), m.profit.toString()]),
-      ["TOTAL", pnlTotals.income.toString(), pnlTotals.expense.toString(), pnlTotals.profit.toString()],
+      ["Month", "Income (₹)", "Salary (₹)", "Expenses (₹)", "Net Profit (₹)"],
+      ...pnlMonthly.map((m) => [m.month, m.income.toString(), m.salary.toString(), m.expense.toString(), m.profit.toString()]),
+      ["TOTAL", pnlTotals.income.toString(), pnlTotals.salary.toString(), pnlTotals.expense.toString(), pnlTotals.profit.toString()],
     ];
     exportCSV(`PnL_Report_${selectedYear}.csv`, rows);
   };
@@ -270,7 +290,7 @@ export default function ReportsPage() {
           </div>
 
           {/* Annual Summary Cards */}
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <Card>
               <CardContent className="p-4">
                 <div className="flex items-center gap-2 mb-1">
@@ -278,6 +298,15 @@ export default function ReportsPage() {
                   <span className="text-sm text-muted-foreground">Total Revenue</span>
                 </div>
                 <p className="text-2xl font-bold text-green-600">{formatCurrency(pnlTotals.income)}</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-4">
+                <div className="flex items-center gap-2 mb-1">
+                  <IndianRupee className="h-4 w-4 text-indigo-600" />
+                  <span className="text-sm text-muted-foreground">Total Salary</span>
+                </div>
+                <p className="text-2xl font-bold text-indigo-600">{formatCurrency(pnlTotals.salary)}</p>
               </CardContent>
             </Card>
             <Card>
@@ -314,6 +343,7 @@ export default function ReportsPage() {
                     <tr>
                       <th className="p-3 text-left font-medium">Month</th>
                       <th className="p-3 text-right font-medium text-green-600">Income</th>
+                      <th className="p-3 text-right font-medium text-indigo-600">Salary</th>
                       <th className="p-3 text-right font-medium text-red-600">Expenses</th>
                       <th className="p-3 text-right font-medium">Net Profit</th>
                       <th className="p-3 text-right font-medium">Margin</th>
@@ -326,11 +356,14 @@ export default function ReportsPage() {
                         <td className="p-3 text-right text-green-600">
                           {m.income > 0 ? formatCurrency(m.income) : <span className="text-muted-foreground">—</span>}
                         </td>
+                        <td className="p-3 text-right text-indigo-600">
+                          {m.salary > 0 ? formatCurrency(m.salary) : <span className="text-muted-foreground">—</span>}
+                        </td>
                         <td className="p-3 text-right text-red-600">
                           {m.expense > 0 ? formatCurrency(m.expense) : <span className="text-muted-foreground">—</span>}
                         </td>
                         <td className={cn("p-3 text-right font-medium", m.profit >= 0 ? "text-foreground" : "text-destructive")}>
-                          {m.income > 0 || m.expense > 0 ? formatCurrency(m.profit) : <span className="text-muted-foreground">—</span>}
+                          {m.income > 0 || m.expense > 0 || m.salary > 0 ? formatCurrency(m.profit) : <span className="text-muted-foreground">—</span>}
                         </td>
                         <td className="p-3 text-right">
                           {m.income > 0 ? (
@@ -346,6 +379,7 @@ export default function ReportsPage() {
                     <tr>
                       <td className="p-3">Total</td>
                       <td className="p-3 text-right text-green-600">{formatCurrency(pnlTotals.income)}</td>
+                      <td className="p-3 text-right text-indigo-600">{formatCurrency(pnlTotals.salary)}</td>
                       <td className="p-3 text-right text-red-600">{formatCurrency(pnlTotals.expense)}</td>
                       <td className={cn("p-3 text-right", pnlTotals.profit >= 0 ? "" : "text-destructive")}>
                         {formatCurrency(pnlTotals.profit)}
@@ -378,7 +412,7 @@ export default function ReportsPage() {
               </div>
             </CardHeader>
             <CardContent>
-              <div className="grid md:grid-cols-2 gap-4">
+              <div className="grid md:grid-cols-3 gap-4">
                 <div>
                   <h4 className="text-sm font-medium text-green-600 mb-2">Income ({monthDetail.income.length} entries)</h4>
                   {monthDetail.income.length === 0 ? (
@@ -394,6 +428,27 @@ export default function ReportsPage() {
                       <div className="flex justify-between text-sm font-bold border-t pt-1">
                         <span>Total</span>
                         <span className="text-green-600">{formatCurrency(monthDetail.income.reduce((s, i) => s + i.amount, 0))}</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <h4 className="text-sm font-medium text-indigo-600 mb-2">Salary ({monthDetail.salary.length} entries)</h4>
+                  {monthDetail.salary.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No salary taken this month</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {monthDetail.salary.map((s) => (
+                        <div key={s.id} className="flex justify-between text-sm">
+                          <span className="text-muted-foreground truncate max-w-[60%]">
+                            {founders?.find((f) => f.id === s.founderId)?.name || "Founder"}
+                          </span>
+                          <span className="font-medium text-indigo-600">{formatCurrency(s.amount)}</span>
+                        </div>
+                      ))}
+                      <div className="flex justify-between text-sm font-bold border-t pt-1">
+                        <span>Total</span>
+                        <span className="text-indigo-600">{formatCurrency(monthDetail.salary.reduce((s, r) => s + r.amount, 0))}</span>
                       </div>
                     </div>
                   )}

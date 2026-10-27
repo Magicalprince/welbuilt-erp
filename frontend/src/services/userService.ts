@@ -103,6 +103,7 @@ export async function getFounderFinances(): Promise<{
   equityPercent: number;
   earnedShare: number;
   totalWithdrawals: number;
+  totalSalary: number;
   availableBalance: number;
 }[]> {
   try {
@@ -113,23 +114,32 @@ export async function getFounderFinances(): Promise<{
       return [];
     }
 
-    // Get total revenue and operational expenses (excludes founder withdrawals —
-    // withdrawals are a distribution of profit, not a cost that should shrink it)
+    // Net profit already has total salary (all founders combined) deducted —
+    // each founder's equity-based share of profit is computed from that same
+    // post-salary figure, then their own salary taken is additionally
+    // subtracted from their personal available balance below, since salary
+    // already paid to a founder is no longer theirs to withdraw against.
     const { getTotalRevenue, getOperationalExpenses } = await import("./financeService");
-    const totalRevenue = await getTotalRevenue();
-    const operationalExpenses = await getOperationalExpenses();
-    const netProfit = totalRevenue - operationalExpenses;
+    const { calculateNetProfit } = await import("./financeCalculations");
+    const { getTotalSalaryTaken, getTotalSalaryByFounder } = await import("./salaryService");
+    const [totalRevenue, operationalExpenses, totalSalary] = await Promise.all([
+      getTotalRevenue(),
+      getOperationalExpenses(),
+      getTotalSalaryTaken(),
+    ]);
+    const netProfit = calculateNetProfit({ totalRevenue, operationalExpenses, totalSalary });
 
-    // Get withdrawals and repayments for each founder
+    // Get withdrawals, repayments, and salary taken for each founder
     const { getWithdrawalsByFounder } = await import("./withdrawalService");
     const { getTotalRepaymentsByFounder } = await import("./repaymentService");
 
     const founderFinances = await Promise.all(
       founders.map(async (founder) => {
         try {
-          const [withdrawals, totalRepaid] = await Promise.all([
+          const [withdrawals, totalRepaid, founderSalary] = await Promise.all([
             getWithdrawalsByFounder(founder.id),
             getTotalRepaymentsByFounder(founder.id),
+            getTotalSalaryByFounder(founder.id),
           ]);
           // Only count APPROVED withdrawals toward founder balance, net of repayments
           const totalWithdrawn = withdrawals
@@ -144,7 +154,8 @@ export async function getFounderFinances(): Promise<{
             equityPercent: founder.equityPercent,
             earnedShare,
             totalWithdrawals,
-            availableBalance: earnedShare - totalWithdrawals,
+            totalSalary: founderSalary,
+            availableBalance: earnedShare - totalWithdrawals - founderSalary,
           };
         } catch (err) {
           console.error(`Error processing founder ${founder.name}:`, err);
@@ -154,6 +165,7 @@ export async function getFounderFinances(): Promise<{
             equityPercent: founder.equityPercent,
             earnedShare: 0,
             totalWithdrawals: 0,
+            totalSalary: 0,
             availableBalance: 0,
           };
         }

@@ -14,6 +14,7 @@ import type {
   IncomeCategory,
   Withdrawal,
   Repayment,
+  SalaryRecord,
   Note,
   Document,
   DocumentType,
@@ -92,6 +93,13 @@ export const queryKeys = {
   // Repayments
   repayments: ["repayments"] as const,
   repaymentsByFounder: (founderId: string) => ["repayments", "founder", founderId] as const,
+
+  // Salary
+  salaryRecords: ["salaryRecords"] as const,
+  salaryRecord: (id: string) => ["salaryRecords", id] as const,
+  salaryRecordsByFounder: (founderId: string) => ["salaryRecords", "founder", founderId] as const,
+  salaryByMonth: ["salaryRecords", "byMonth"] as const,
+  salaryConfig: ["salaryConfig"] as const,
 
   // Notes
   notes: ["notes"] as const,
@@ -1238,6 +1246,124 @@ export function useDeleteRepayment() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.repayments });
       queryClient.invalidateQueries({ queryKey: queryKeys.withdrawals });
+      queryClient.invalidateQueries({ queryKey: queryKeys.founderFinances });
+      queryClient.invalidateQueries({ queryKey: queryKeys.financialSummary });
+    },
+  });
+}
+
+// ============================================
+// Salary Hooks — deliberately never invalidate queryKeys.expenses (unlike
+// Withdrawal hooks): marking salary taken never touches the Expenses
+// collection, per explicit instruction that Salary stays separate from
+// Expenses everywhere.
+// ============================================
+export function useSalaryConfig() {
+  return useQuery({
+    queryKey: queryKeys.salaryConfig,
+    queryFn: async () => {
+      const { getSalaryConfig } = await import("@/services/salaryService");
+      return getSalaryConfig();
+    },
+  });
+}
+
+export function useUpdateSalaryConfig() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ amount, updatedBy }: { amount: number; updatedBy?: string }) => {
+      const { updateSalaryConfig } = await import("@/services/salaryService");
+      return updateSalaryConfig(amount, updatedBy);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.salaryConfig });
+    },
+  });
+}
+
+export function useSalaryRecords() {
+  return useQuery({
+    queryKey: queryKeys.salaryRecords,
+    queryFn: async () => {
+      const { getAllSalaryRecords } = await import("@/services/salaryService");
+      return getAllSalaryRecords();
+    },
+  });
+}
+
+export function useSalaryRecordsByFounder(founderId: string) {
+  return useQuery({
+    queryKey: queryKeys.salaryRecordsByFounder(founderId),
+    queryFn: async () => {
+      const { getSalaryRecordsByFounder } = await import("@/services/salaryService");
+      return getSalaryRecordsByFounder(founderId);
+    },
+    enabled: !!founderId,
+  });
+}
+
+export function useSalaryByMonth() {
+  return useQuery({
+    queryKey: queryKeys.salaryByMonth,
+    queryFn: async () => {
+      const { getSalaryByMonth } = await import("@/services/salaryService");
+      return getSalaryByMonth();
+    },
+  });
+}
+
+export function useMarkSalaryTaken() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (data: { founderId: string; month: string; amount: number; takenAt: Date; notes?: string }) => {
+      const { markSalaryTaken } = await import("@/services/salaryService");
+      return markSalaryTaken(data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.salaryRecords });
+      queryClient.invalidateQueries({ queryKey: queryKeys.salaryByMonth });
+      queryClient.invalidateQueries({ queryKey: queryKeys.founderFinances });
+      queryClient.invalidateQueries({ queryKey: queryKeys.financialSummary });
+    },
+  });
+}
+
+export function useUpdateSalaryRecord() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      salaryId,
+      data,
+    }: {
+      salaryId: string;
+      data: Partial<Pick<SalaryRecord, "amount" | "takenAt" | "notes">>;
+    }) => {
+      const { updateSalaryRecord } = await import("@/services/salaryService");
+      return updateSalaryRecord(salaryId, data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.salaryRecords });
+      queryClient.invalidateQueries({ queryKey: queryKeys.salaryByMonth });
+      queryClient.invalidateQueries({ queryKey: queryKeys.founderFinances });
+      queryClient.invalidateQueries({ queryKey: queryKeys.financialSummary });
+    },
+  });
+}
+
+export function useDeleteSalaryRecord() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (salaryId: string) => {
+      const { deleteSalaryRecord } = await import("@/services/salaryService");
+      return deleteSalaryRecord(salaryId);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.salaryRecords });
+      queryClient.invalidateQueries({ queryKey: queryKeys.salaryByMonth });
       queryClient.invalidateQueries({ queryKey: queryKeys.founderFinances });
       queryClient.invalidateQueries({ queryKey: queryKeys.financialSummary });
     },

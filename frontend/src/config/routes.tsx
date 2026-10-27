@@ -30,6 +30,7 @@ import InvoiceFormPage from "@/pages/finance/InvoiceFormPage";
 import ExpensesPage from "@/pages/finance/ExpensesPage";
 import IncomePage from "@/pages/finance/IncomePage";
 import WithdrawalsPage from "@/pages/finance/WithdrawalsPage";
+import SalaryPage from "@/pages/finance/SalaryPage";
 import ProformasPage from "@/pages/finance/ProformasPage";
 import ProformaDetailPage from "@/pages/finance/ProformaDetailPage";
 import ProformaFormPage from "@/pages/finance/ProformaFormPage";
@@ -144,6 +145,10 @@ export const router = createBrowserRouter([
       {
         path: "finance/withdrawals",
         element: <WithdrawalsPage />,
+      },
+      {
+        path: "finance/salary",
+        element: <SalaryPage />,
       },
       {
         path: "finance/proformas",

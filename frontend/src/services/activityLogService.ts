@@ -263,6 +263,59 @@ export async function logWithdrawalApproved(
   });
 }
 
+export async function logSalaryMarked(
+  userId: string,
+  salaryId: string,
+  founderName: string,
+  amount: number,
+  month: string
+): Promise<string> {
+  return logActivity({
+    userId,
+    action: "CREATE",
+    entityType: "SALARY",
+    entityId: salaryId,
+    entityName: `Salary for ${founderName}`,
+    details: `Marked ₹${amount.toLocaleString()} salary taken by ${founderName} for ${month}`,
+    metadata: { amount, founderName, month },
+  });
+}
+
+export async function logSalaryUpdated(
+  userId: string,
+  salaryId: string,
+  founderName: string,
+  amount: number,
+  month: string
+): Promise<string> {
+  return logActivity({
+    userId,
+    action: "UPDATE",
+    entityType: "SALARY",
+    entityId: salaryId,
+    entityName: `Salary for ${founderName}`,
+    details: `Updated ${month} salary for ${founderName} to ₹${amount.toLocaleString()}`,
+    metadata: { amount, founderName, month },
+  });
+}
+
+export async function logSalaryDeleted(
+  userId: string,
+  salaryId: string,
+  founderName: string,
+  month: string
+): Promise<string> {
+  return logActivity({
+    userId,
+    action: "DELETE",
+    entityType: "SALARY",
+    entityId: salaryId,
+    entityName: `Salary for ${founderName}`,
+    details: `Unmarked ${month} salary for ${founderName}`,
+    metadata: { founderName, month },
+  });
+}
+
 export async function logDocumentUploaded(
   userId: string,
   documentId: string,

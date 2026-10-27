@@ -25,6 +25,12 @@ export interface CompanySettings {
   currencySymbol: string;
   dateFormat: string;
   fiscalYearStart: number; // Month (1-12)
+  // Ramachandraa's signature image, uploaded via the Salary page — no such
+  // asset existed in the codebase before (only Baranitharan's, at the
+  // fixed /images/sparks/signature.png path reused as-is). Optional until
+  // uploaded; salarySlipPdfService.ts falls back to no signature image if
+  // selected without one.
+  ramachandraaSignatureUrl?: string;
   updatedAt: Date;
 }
 
@@ -48,6 +54,7 @@ export interface FirestoreSettings {
   currencySymbol: string;
   dateFormat: string;
   fiscalYearStart: number;
+  ramachandraaSignatureUrl?: string;
   updatedAt: Timestamp;
 }
 
@@ -121,6 +128,13 @@ export async function updateBankDetails(
   bankDetails: CompanySettings["bankDetails"]
 ): Promise<void> {
   await updateCompanySettings({ bankDetails });
+}
+
+// Update Ramachandraa's salary-slip signature image URL (uploaded via the
+// Salary page). Baranitharan's signature is a fixed existing asset and
+// needs no equivalent setter.
+export async function updateRamachandraaSignature(url: string): Promise<void> {
+  await updateCompanySettings({ ramachandraaSignatureUrl: url });
 }
 
 // Update invoice settings

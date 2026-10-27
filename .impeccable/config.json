@@ -1,0 +1,26 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "ai-color-palette",
+        "value": "*",
+        "files": [
+          "frontend/src/pages/finance/FinancePage.tsx"
+        ],
+        "createdAt": "2026-10-27T14:49:15.076Z",
+        "reason": "user: indigo text-indigo-500 is a flat label color matching the existing multi-color stat-card convention (green=income, red=expense, purple=withdrawals/bank, amber=primary) — new Salary stat uses indigo as a distinct 5th color in the same established system, not a gradient or dark-neon AI-tell combo"
+      },
+      {
+        "rule": "ai-color-palette",
+        "value": "*",
+        "files": [
+          "frontend/src/pages/reports/ReportsPage.tsx"
+        ],
+        "createdAt": "2026-10-27T14:49:18.823Z",
+        "reason": "user: indigo text-indigo-600 is a flat label color matching the existing multi-color report-card convention (green=revenue, red=expenses, primary=net profit) — new Total Salary stat uses indigo as a distinct color in the same established system, not a gradient or dark-neon AI-tell combo"
+      }
+    ]
+  }
+}

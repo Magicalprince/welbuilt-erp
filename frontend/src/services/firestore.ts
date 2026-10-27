@@ -33,6 +33,7 @@ export const COLLECTIONS = {
   INCOMES: "incomes",
   WITHDRAWALS: "withdrawals",
   REPAYMENTS: "repayments",
+  SALARY_RECORDS: "salaryRecords",
   REFERRERS: "referrers",
   SPARKS_LEADS: "sparksLeads",
   SPARKS_LEAD_FOLLOWUPS: "sparksLeadFollowUps",
