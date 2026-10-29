@@ -576,7 +576,7 @@ export default function FinancePage() {
 }
 
 // Founder Card Component
-function FounderCard({ founder, index }: { founder: { id: string; name: string; equityPercent: number; earnedShare: number; totalWithdrawals: number; totalSalary: number; availableBalance: number }; index: number }) {
+function FounderCard({ founder, index }: { founder: { id: string; name: string; equityPercent: number; earnedShare: number; totalWithdrawals: number; availableBalance: number }; index: number }) {
   const colors = [
     { bg: "bg-amber-500", ring: "ring-amber-500/20", text: "text-amber-500" },
     { bg: "bg-slate-500", ring: "ring-slate-500/20", text: "text-slate-500" },
@@ -610,12 +610,6 @@ function FounderCard({ founder, index }: { founder: { id: string; name: string; 
               <span className="text-muted-foreground">Withdrawn</span>
               <span className="font-medium text-red-500">-{formatCurrency(founder.totalWithdrawals)}</span>
             </div>
-            {founder.totalSalary > 0 && (
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Salary Taken</span>
-                <span className="font-medium text-indigo-500">-{formatCurrency(founder.totalSalary)}</span>
-              </div>
-            )}
             <div className="h-px bg-border" />
             <div className="flex justify-between items-center">
               <span className="font-medium">Available</span>
@@ -623,7 +617,7 @@ function FounderCard({ founder, index }: { founder: { id: string; name: string; 
             </div>
           </div>
           <Progress
-            value={founder.earnedShare > 0 ? ((founder.totalWithdrawals + founder.totalSalary) / founder.earnedShare) * 100 : 0}
+            value={founder.earnedShare > 0 ? (founder.totalWithdrawals / founder.earnedShare) * 100 : 0}
             className="mt-3 h-1.5"
             indicatorClassName={color.bg}
           />

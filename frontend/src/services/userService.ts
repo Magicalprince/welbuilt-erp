@@ -103,7 +103,6 @@ export async function getFounderFinances(): Promise<{
   equityPercent: number;
   earnedShare: number;
   totalWithdrawals: number;
-  totalSalary: number;
   availableBalance: number;
 }[]> {
   try {
@@ -114,39 +113,37 @@ export async function getFounderFinances(): Promise<{
       return [];
     }
 
-    // Net profit already has total salary (all founders combined) deducted —
-    // each founder's equity-based share of profit is computed from that same
-    // post-salary figure, then their own salary taken is additionally
-    // subtracted from their personal available balance below, since salary
-    // already paid to a founder is no longer theirs to withdraw against.
-    const { getTotalRevenue, getOperationalExpenses } = await import("./financeService");
-    const { calculateNetProfit } = await import("./financeCalculations");
-    const { getTotalSalaryTaken, getTotalSalaryByFounder } = await import("./salaryService");
-    const [totalRevenue, operationalExpenses, totalSalary] = await Promise.all([
-      getTotalRevenue(),
-      getOperationalExpenses(),
-      getTotalSalaryTaken(),
-    ]);
-    const netProfit = calculateNetProfit({ totalRevenue, operationalExpenses, totalSalary });
+    // Salary is taken by all three founders together, not a personal draw
+    // like Withdrawal — so it belongs in the shared pool everyone's equity
+    // slice comes from, exactly like any other expense. Each founder's
+    // earnedShare is their equityPercent slice of the company Bank
+    // Balance (Revenue - Expenses - Salary - Withdrawals, already computed
+    // once, company-wide, in getCompanyBankBalance). Salary must NOT be
+    // subtracted a second time per founder below — that would double-count
+    // it and, worse, make one founder's salary look like it only reduced
+    // their own card when the shared pool had already absorbed it once for
+    // everyone. Withdrawn stays as a personal deduction since Withdrawal
+    // IS the mechanism for a founder pulling money out individually.
+    const { getCompanyBankBalance } = await import("./financeService");
+    const bankBalance = await getCompanyBankBalance();
 
-    // Get withdrawals, repayments, and salary taken for each founder
+    // Get withdrawals and repayments for each founder
     const { getWithdrawalsByFounder } = await import("./withdrawalService");
     const { getTotalRepaymentsByFounder } = await import("./repaymentService");
 
     const founderFinances = await Promise.all(
       founders.map(async (founder) => {
         try {
-          const [withdrawals, totalRepaid, founderSalary] = await Promise.all([
+          const [withdrawals, totalRepaid] = await Promise.all([
             getWithdrawalsByFounder(founder.id),
             getTotalRepaymentsByFounder(founder.id),
-            getTotalSalaryByFounder(founder.id),
           ]);
           // Only count APPROVED withdrawals toward founder balance, net of repayments
           const totalWithdrawn = withdrawals
             .filter((w) => w.status === "APPROVED")
             .reduce((sum, w) => sum + w.amount, 0);
           const totalWithdrawals = totalWithdrawn - totalRepaid;
-          const earnedShare = netProfit * (founder.equityPercent / 100);
+          const earnedShare = bankBalance * (founder.equityPercent / 100);
 
           return {
             id: founder.id,
@@ -154,8 +151,7 @@ export async function getFounderFinances(): Promise<{
             equityPercent: founder.equityPercent,
             earnedShare,
             totalWithdrawals,
-            totalSalary: founderSalary,
-            availableBalance: earnedShare - totalWithdrawals - founderSalary,
+            availableBalance: earnedShare - totalWithdrawals,
           };
         } catch (err) {
           console.error(`Error processing founder ${founder.name}:`, err);
@@ -165,7 +161,6 @@ export async function getFounderFinances(): Promise<{
             equityPercent: founder.equityPercent,
             earnedShare: 0,
             totalWithdrawals: 0,
-            totalSalary: 0,
             availableBalance: 0,
           };
         }
