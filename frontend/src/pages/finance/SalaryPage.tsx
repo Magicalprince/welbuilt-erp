@@ -174,7 +174,14 @@ export default function SalaryPage() {
         ]);
       });
     });
-    const csv = rows.map((r) => r.map((v) => `"${v.replace(/"/g, '""')}"`).join(",")).join("\n");
+    // Prefix a leading =, +, -, @, tab, or CR with an apostrophe so
+    // Excel/Sheets never interprets a cell (e.g. a founder's free-text
+    // note) as a formula on open.
+    const escapeCsvCell = (v: string) => {
+      const safe = /^[=+\-@\t\r]/.test(v) ? `'${v}` : v;
+      return `"${safe.replace(/"/g, '""')}"`;
+    };
+    const csv = rows.map((r) => r.map(escapeCsvCell).join(",")).join("\n");
     const blob = new Blob([csv], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
