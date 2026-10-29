@@ -167,11 +167,15 @@ export async function generateFinanceStatementPdf(options: StatementOptions): Pr
   // carries the brand mark (same convention invoicePdfService.ts already
   // uses), so a redundant "WelBuilt AI Solutions Pvt. Ltd." text line was
   // dropped per explicit request. Address sits directly below the logo,
-  // stacked, not beside it.
-  const LOGO_H = 34;
+  // stacked, not beside it. LOGO_H kept at 26 (not the previous 34) with
+  // a 10pt gap below — the logo PNG's own internal tagline text ("Welbuilt
+  // Ai / Solutions Pvt. Ltd.") sits close to its bottom edge, so a taller
+  // LOGO_H with only a 4pt gap ran the address line straight into it
+  // (same bug already found and fixed in salarySlipPdfService.ts).
+  const LOGO_H = 26;
   const headerTextX = MARGIN;
   const logoTopY = y - 6;
-  let headerY = logoTopY - LOGO_H - 4;
+  let headerY = logoTopY - LOGO_H - 10;
   if (logoImg) {
     const naturalDims = logoImg.scale(1);
     const scale = LOGO_H / naturalDims.height;
@@ -187,14 +191,20 @@ export async function generateFinanceStatementPdf(options: StatementOptions): Pr
     headerY -= 11;
   }
 
-  // Title + meta sit on their own row below the whole company block (logo
-  // + address), not beside it.
-  const metaTop = headerY - 10;
-  drawCentered(options.title, PAGE_W / 2, metaTop, 14, bold);
+  // Title sits on its own row, then Period/Generated on a row below it —
+  // previously both were drawn at the same y position (title centered on
+  // the full page width, meta right-aligned), which worked only for a
+  // short title. A long title like "Income, Salary & Expense Statement"
+  // is wide enough that its centered span's right edge runs past the
+  // page's horizontal midpoint and straight into the right-aligned meta
+  // text, visibly colliding. Stacking them removes any chance of that.
+  const titleTop = headerY - 10;
+  drawCentered(options.title, PAGE_W / 2, titleTop, 14, bold);
+  const metaTop = titleTop - 20;
   drawRightAligned(`Period: ${options.dateRangeLabel || "All time"}`, MARGIN + CONTENT_W, metaTop, 8.5, regular, COLORS.slate);
   drawRightAligned(`Generated: ${formatShortDate(new Date())}`, MARGIN + CONTENT_W, metaTop - 12, 8.5, regular, COLORS.slate);
 
-  y = metaTop - 24;
+  y = metaTop - 26;
   hLine(y);
   y -= 16;
 
@@ -249,6 +259,20 @@ export async function generateFinanceStatementPdf(options: StatementOptions): Pr
     for (let i = 1; i < tableColXs.length - 1; i++) {
       vLine(tableColXs[i], sectionTopY, sectionBottomY);
     }
+    vLine(MARGIN, sectionTopY, sectionBottomY);
+    vLine(MARGIN + CONTENT_W, sectionTopY, sectionBottomY);
+    hLine(sectionBottomY, MARGIN, MARGIN + CONTENT_W);
+  };
+
+  // Subtotal/Total rows merge Date+Description+Category into one wide
+  // label spanning the full row — they must NOT get the 4-column interior
+  // dividers closeTableSection draws, since those sit at fixed x-positions
+  // (e.g. colDateDivX at MARGIN+60) sized for the data columns above, and
+  // a variable-length label like "October 2026 Subtotal" or "Total
+  // Expenses" runs straight through wherever that divider happens to
+  // land, slicing the text in half. Only the outer left/right borders and
+  // bottom rule are needed here.
+  const closeMergedRow = (sectionTopY: number, sectionBottomY: number) => {
     vLine(MARGIN, sectionTopY, sectionBottomY);
     vLine(MARGIN + CONTENT_W, sectionTopY, sectionBottomY);
     hLine(sectionBottomY, MARGIN, MARGIN + CONTENT_W);
@@ -362,14 +386,15 @@ export async function generateFinanceStatementPdf(options: StatementOptions): Pr
       const subtotalRowH = TEXT_BASELINE_OFFSET + ROW_BOTTOM_PAD + 4;
       const subtotalTopY = rowY;
       const subtotalBottomY = subtotalTopY - subtotalRowH;
-      closeTableSection(tableTop, subtotalBottomY);
-      // Label starts at the row's full left edge (not colCategoryX) — that
-      // narrow Category-column span was sized for short category words,
-      // not a "<Month> Subtotal" label, which ran into the right-aligned
-      // amount for any month name longer than ~4 characters.
+      // Interior column dividers (Date/Description/Category) only belong
+      // on the data rows above — close that span on its own, then close
+      // the Subtotal row separately with just outer borders, since its
+      // "<Month> Subtotal" label spans the full merged width and would
+      // otherwise get sliced by a divider sized for the data columns.
+      closeTableSection(tableTop, subtotalTopY);
+      closeMergedRow(subtotalTopY, subtotalBottomY);
       page.drawText(`${group.label} Subtotal`, { x: MARGIN + 8, y: subtotalTopY - TEXT_BASELINE_OFFSET, size: 8.5, font: bold, color: COLORS.slate });
       drawRightAligned(formatMoney(monthSubtotal), colAmountRightX, subtotalTopY - TEXT_BASELINE_OFFSET, 9, bold);
-      hLine(subtotalTopY);
 
       sectionTotal += monthSubtotal;
       y = subtotalBottomY - 10;
@@ -382,7 +407,7 @@ export async function generateFinanceStatementPdf(options: StatementOptions): Pr
     const totalRowH = TEXT_BASELINE_OFFSET + ROW_BOTTOM_PAD + 4;
     const totalTopY = y;
     const totalBottomY = totalTopY - totalRowH;
-    closeTableSection(totalTopY, totalBottomY);
+    closeMergedRow(totalTopY, totalBottomY);
     page.drawText(`Total ${sectionLabel}`, { x: MARGIN + 8, y: totalTopY - TEXT_BASELINE_OFFSET, size: 10, font: bold });
     drawRightAligned(formatMoney(sectionTotal), colAmountRightX, totalTopY - TEXT_BASELINE_OFFSET, 11, bold);
     hLine(totalTopY);
