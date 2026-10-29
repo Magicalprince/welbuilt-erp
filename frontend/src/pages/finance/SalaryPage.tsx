@@ -1,7 +1,7 @@
 import { useState, useMemo } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
-import { ArrowLeft, Users, Pencil, Trash2, Download, Settings2, FileSignature, Upload, CreditCard } from "lucide-react";
+import { ArrowLeft, Users, Pencil, Trash2, Download, Settings2, FileSignature, Upload, CreditCard, FileDown } from "lucide-react";
 import {
   Button,
   Card,
@@ -151,6 +151,37 @@ export default function SalaryPage() {
       .flatMap((g) => g.records)
       .filter((r) => r.founderId === founderId)
       .reduce((sum, r) => sum + r.amount, 0);
+  };
+
+  // Exports every real SalaryRecord as a CSV report — separate from the
+  // per-record slip PDF generation above. Mock slips never appear here
+  // since they're never written to Firestore in the first place.
+  const handleExportSalaryCsv = () => {
+    if (!monthGroups || monthGroups.length === 0) {
+      toast.error("No salary records to export");
+      return;
+    }
+    const rows: string[][] = [["Month", "Founder", "Amount (₹)", "Taken On", "Notes"]];
+    monthGroups.forEach((group) => {
+      group.records.forEach((record) => {
+        const { founder } = founderInfo(record.founderId);
+        rows.push([
+          monthKeyLabel(group.month),
+          founder?.name || "Founder",
+          String(record.amount),
+          formatDate(record.takenAt),
+          record.notes || "",
+        ]);
+      });
+    });
+    const csv = rows.map((r) => r.map((v) => `"${v.replace(/"/g, '""')}"`).join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `Salary_Records_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   const handleOpenConfig = () => {
@@ -460,8 +491,12 @@ export default function SalaryPage() {
 
       {/* Salary History — grouped by month */}
       <Card>
-        <CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>Salary History</CardTitle>
+          <Button variant="outline" size="sm" onClick={handleExportSalaryCsv}>
+            <FileDown className="h-4 w-4 mr-2" />
+            Export CSV
+          </Button>
         </CardHeader>
         <CardContent>
           {loadingHistory ? (
